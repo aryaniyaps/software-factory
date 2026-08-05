@@ -27,6 +27,10 @@ export class InMemorySchedulerStore implements SchedulerStore {
     this.nodes = nodes.map((node) => ({ ...node, dependencies: [...node.dependencies] }));
   }
 
+  add(nodes: ScheduledNode[]): void {
+    this.nodes.push(...nodes.map((node) => ({ ...node, dependencies: [...node.dependencies] })));
+  }
+
   reclaimExpired(now: number): void {
     for (const node of this.nodes) {
       if (node.status === "leased" && node.leaseExpiresAt !== undefined && node.leaseExpiresAt <= now) {
