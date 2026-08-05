@@ -12,7 +12,8 @@
   "dependencies": {
     "@earendil-works/pi-coding-agent": "latest",
     "pg": "latest",
-    "typebox": "latest"
+    "typebox": "latest",
+    "@vectorize-io/hindsight-client": "latest"
   },
   "devDependencies": {
     "@types/node": "latest",
