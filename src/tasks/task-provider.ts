@@ -13,6 +13,6 @@ export interface FactoryTask {
 
 export interface TaskProvider {
   listReady(): Promise<FactoryTask[]>;
-  get(id: string): Promise<FactoryTask | null>;
+  get?(id: string): Promise<FactoryTask | null>;
   updateStatus(taskId: string, status: string, runId?: string): Promise<void>;
 }

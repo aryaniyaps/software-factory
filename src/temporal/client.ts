@@ -13,7 +13,7 @@ export interface FactoryWorkflowInput {
   sandboxProfile: string;
 }
 
-interface WorkflowClientLike {
+export interface WorkflowClientLike {
   workflow: {
     start(workflow: unknown, options: { workflowId: string; taskQueue: string; args: [FactoryWorkflowInput] }): Promise<unknown>;
   };
@@ -25,6 +25,14 @@ export async function startFactoryWorkflow(client: WorkflowClientLike, input: Fa
     taskQueue: TASK_QUEUES.control,
     args: [input],
   });
+}
+
+export class TemporalWorkflowStarter {
+  constructor(private readonly client: WorkflowClientLike) {}
+
+  start(input: FactoryWorkflowInput): Promise<unknown> {
+    return startFactoryWorkflow(this.client, input);
+  }
 }
 
 export async function createTemporalClient(options: { address?: string; namespace?: string } = {}): Promise<Client> {
