@@ -1,5 +1,8 @@
+import { readFile } from "node:fs/promises";
 import { createApiServer } from "./api/server.js";
 import type { ApiStore } from "./api/server.js";
+import { createPool } from "./db/database.js";
+import { PostgresApplicationStore } from "./db/application-store.js";
 import { mvpWorkflow } from "./workflow/mvp-workflow.js";
 import { FactoryScheduler, InMemorySchedulerStore } from "./scheduler/scheduler.js";
 
@@ -49,7 +52,7 @@ export class InMemoryApplicationStore implements ApiStore {
 }
 
 export interface Application {
-  store: InMemoryApplicationStore;
+  store: ApiStore;
   scheduler: FactoryScheduler;
   api: ReturnType<typeof createApiServer>;
 }
@@ -62,7 +65,12 @@ export async function createApplication(options: {
   if (options.workspaceMode === "production" && options.arbitraryCode && options.provider === "process") {
     throw new Error("production sandbox provider is required for arbitrary-code execution");
   }
-  const store = new InMemoryApplicationStore();
+  let store: ApiStore = new InMemoryApplicationStore();
+  if (options.workspaceMode !== "test" && process.env.DATABASE_URL) {
+    const pool = createPool();
+    await pool.query(await readFile(new URL("./db/schema.sql", import.meta.url), "utf8"));
+    store = new PostgresApplicationStore(pool);
+  }
   const schedulerStore = new InMemorySchedulerStore([]);
   const scheduler = new FactoryScheduler(schedulerStore, async () => {}, 1);
   return { store, scheduler, api: createApiServer(store) };
