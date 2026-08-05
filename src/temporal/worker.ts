@@ -5,7 +5,7 @@ import { TASK_QUEUES } from "./task-queues.js";
 export async function createTemporalWorker(options: {
   taskQueue?: string;
   workflowsPath: string;
-  activities: Record<string, (...args: never[]) => Promise<unknown>>;
+  activities: Record<string, (...args: any[]) => Promise<any>>;
   address?: string;
   namespace?: string;
 }): Promise<Worker> {
