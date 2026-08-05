@@ -6,7 +6,7 @@
 
 ## Goal
 
-Turn the MVP graph into a self-hosted production execution loop by using Pi's official Gondolin integration for sandboxed agent/tool execution, replacing in-memory scheduling with Postgres leases, consuming GitHub Issues, and deploying immutable Docker images over SSH with health checks and rollback.
+Turn the MVP graph into a self-hosted production execution loop by using Pi's official Gondolin integration for sandboxed agent/tool execution, replacing in-memory scheduling with Postgres leases, consuming organization-scoped GitHub Projects v2 across multiple repositories, and deploying immutable Docker images over SSH with health checks and rollback.
 
 ## Decisions
 
@@ -22,9 +22,11 @@ Custom research/memory tools remain host-side network clients. They receive no h
 
 The scheduler uses the existing Postgres schema and `FOR UPDATE SKIP LOCKED` leasing query. Workers are stateless processes identified by worker IDs. A lease expiry requeues abandoned nodes. State transitions and events are persisted before a worker acknowledges completion.
 
-### GitHub is the first tracker
+### GitHub Organization Projects is the first task provider
 
-GitHub Issues are normalized into the existing task model. The adapter reads eligible labels/states and updates issue comments/labels only through explicit deterministic code. The graph remains the source of truth for attempts; GitHub remains the human task/status surface.
+An organization-owned GitHub Projects v2 project is the human task/control surface. Its items may be issues, pull requests, or draft issues from multiple repositories. The adapter uses GraphQL for project items and custom fields, plus organization `projects_v2_item` webhooks for near-real-time updates.
+
+The factory requires these project fields: `Factory Status`, `Repository`, `Base Branch`, `Workflow`, `Deployment Profile`, `Sandbox Profile`, and `Factory Run ID`. For issue and pull-request items, repository metadata can be read from the item content; draft issues must provide the `Repository` field. The graph remains the source of truth for attempts; GitHub remains the task and status surface.
 
 ### Docker VPS is the first deployer
 
@@ -33,7 +35,8 @@ The deployer uses `execFile("ssh", args)` and never constructs a shell command f
 ## Runtime flow
 
 ```text
-GitHub Issue / API
+Organization GitHub Project item / API
+      -> ProjectRegistry resolves repository + execution profiles
       -> Postgres task + graph
       -> worker lease
       -> host Git worktree
@@ -53,7 +56,7 @@ Independent tickets lease concurrently. A ticket's phases remain sequential unti
 - `GondolinWorkspaceProvider`: thin adapter around the official Gondolin SDK for deterministic commands and file operations; it contains no isolation logic.
 - `PostgresSchedulerStore`: implements the scheduler store against the existing database repository.
 - `WorkerProcess`: polls, leases, executes, records events, and renews/abandons leases safely.
-- `GitHubIssueTracker`: normalizes issue fields and performs explicit status/comment updates.
+- `GitHubProjectProvider`: reads organization Project v2 items, resolves custom fields, normalizes tasks across repositories, and performs idempotent field/comment updates.
 - `SshDockerExecutor`: executes fixed Docker argv sequences on a configured host and validates image digests.
 - `HealthChecker`: HTTP checks with timeout and bounded retries.
 
@@ -64,7 +67,7 @@ Independent tickets lease concurrently. A ticket's phases remain sequential unti
 - Only the attempt worktree is mounted into the VM.
 - Network access is policy-configured through Gondolin; default is deny except required package/model/documentation endpoints.
 - GitHub and deployment credentials are held by the host control plane and never exposed as Pi tool results.
-- GitHub Issue text and repository content are untrusted prompt input.
+- Project item text, issue text, and repository content are untrusted prompt input.
 - All external commands use argument arrays and fixed executable names.
 
 ## Verification
@@ -75,7 +78,7 @@ The sprint is complete when tests prove:
 2. Project commands run in the VM, not the host process.
 3. Two workers cannot lease the same node.
 4. Expired leases are reclaimed and events remain ordered.
-5. GitHub issues normalize into tasks and status updates are idempotent.
+5. Organization Project v2 items from multiple repositories normalize into tasks and status updates are idempotent.
 6. A digest-pinned Docker deployment passes health checks.
 7. A failed health check restores the previous digest.
 8. Two independent tasks execute concurrently in separate worktrees and VMs.
