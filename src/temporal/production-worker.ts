@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { execFile as nodeExecFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -25,6 +25,11 @@ import { createProductionWorkers } from "./worker-main.js";
 const execFile = promisify(nodeExecFile);
 
 type Environment = Record<string, string | undefined>;
+
+export function memoryBankFromEnv(env: Environment = process.env): string {
+  if (!env.FACTORY_ORGANIZATION || !env.FACTORY_PROJECT) throw new Error("FACTORY_ORGANIZATION and FACTORY_PROJECT are required");
+  return projectBankId(env.FACTORY_ORGANIZATION, env.FACTORY_PROJECT);
+}
 
 export function deploymentTargetFromEnv(env: Environment = process.env): DeploymentTarget {
   if (!env.FACTORY_DEPLOY_HOST || !env.FACTORY_HEALTH_URL) throw new Error("FACTORY_DEPLOY_HOST and FACTORY_HEALTH_URL are required");
@@ -55,6 +60,9 @@ export async function startWorkers(): Promise<void> {
   const pi = new PiAgentRunner();
   const hindsightClient = new HindsightClient({ baseUrl: process.env.HINDSIGHT_BASE_URL ?? "http://localhost:8888", apiKey: process.env.HINDSIGHT_API_KEY });
   const memory = new HindsightMemory(hindsightClient as unknown as ConstructorParameters<typeof HindsightMemory>[0]);
+  const templatePath = process.env.HINDSIGHT_TEMPLATE_PATH ?? join(process.cwd(), "infra/hindsight/factory-bank-template.json");
+  const template = JSON.parse(await readFile(templatePath, "utf8"));
+  await memory.bootstrapBank(memoryBankFromEnv(), template);
   const agent = createAgentActivities({
     run: pi.run.bind(pi),
     memory: {
