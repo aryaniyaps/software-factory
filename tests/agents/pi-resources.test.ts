@@ -4,9 +4,10 @@ import { assertRequiredSkills, factoryResourceRoot } from "../../src/agents/pi-r
 
 describe("factory Pi resources", () => {
   it("declares required packages and filesystem skills", async () => {
-    const manifest = JSON.parse(await readFile(new URL("../../infra/pi/resource-manifest.json", import.meta.url), "utf8")) as { packages: Array<{ name: string }>; requiredSkills: string[] };
+    const manifest = JSON.parse(await readFile(new URL("../../infra/pi/resource-manifest.json", import.meta.url), "utf8")) as { packages: Array<{ name: string }>; requiredSkills: string[]; webSearchConfig: string };
     expect(manifest.packages.map((pkg) => pkg.name)).toEqual(expect.arrayContaining(["pi-web-access", "@dietrichgebert/ponytail", "context-mode"]));
     expect(manifest.requiredSkills).toContain("skills/engineering/tdd/SKILL.md");
+    expect(manifest.webSearchConfig).toBe("infra/pi/web-search.json.example");
   });
 
   it("rejects missing skills and resolves a factory-owned root", async () => {

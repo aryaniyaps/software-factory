@@ -8,6 +8,7 @@ const execFile = promisify(nodeExecFile);
 export interface PiResourceManifest {
   packages: Array<{ name: string; version: string; spec: string }>;
   skillsRoot: string;
+  webSearchConfig: string;
   requiredSkills: string[];
 }
 
@@ -28,6 +29,7 @@ export async function assertRequiredSkills(root: string, paths: string[]): Promi
 export async function bootstrapPiResources(manifest: PiResourceManifest, destination: string, sourceRoot: string): Promise<void> {
   await mkdir(destination, { recursive: true });
   await cp(join(sourceRoot, manifest.skillsRoot), join(destination, manifest.skillsRoot), { recursive: true, force: true });
+  await cp(join(sourceRoot, manifest.webSearchConfig), join(destination, "web-search.json"));
   await assertRequiredSkills(destination, manifest.requiredSkills);
   for (const pkg of manifest.packages) {
     await execFile("pi", ["install", pkg.spec], { env: { ...process.env, PI_CODING_AGENT_DIR: destination } });
