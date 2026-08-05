@@ -1,0 +1,15 @@
+{
+  "packages": [
+    { "name": "pi-web-access", "version": "0.18.0", "spec": "npm:pi-web-access@0.18.0" },
+    { "name": "@dietrichgebert/ponytail", "version": "4.8.4", "spec": "npm:@dietrichgebert/ponytail@4.8.4" },
+    { "name": "context-mode", "version": "1.0.169", "spec": "npm:context-mode@1.0.169" }
+  ],
+  "skillsRoot": "skills/engineering",
+  "webSearchConfig": "infra/pi/web-search.json.example",
+  "requiredSkills": [
+    "skills/engineering/tdd/SKILL.md",
+    "skills/engineering/code-review/SKILL.md",
+    "skills/engineering/diagnosing-bugs/SKILL.md",
+    "skills/engineering/implement/SKILL.md"
+  ]
+}

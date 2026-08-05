@@ -1,0 +1,20 @@
+{
+  "version": "1",
+  "bank": {
+    "retain_mission": "Retain engineering decisions, repository conventions, constraints, failure causes, repairs, deployment outcomes, and evidence-backed lessons.",
+    "observations_mission": "Consolidate recurring engineering patterns, project risks, successful repairs, and operational regressions.",
+    "reflect_mission": "Act as a concise software-factory engineering advisor. Prefer project evidence, state uncertainty, and never invent repository facts.",
+    "directives": [
+      "Separate observed facts from recommendations.",
+      "Prefer recent project and repository evidence over generic advice.",
+      "Never reveal credentials or recommend bypassing sandbox/security boundaries."
+    ]
+  },
+  "mental_models": [
+    { "id": "architecture", "name": "Architecture Summary", "source_query": "What is the current project architecture, its boundaries, and its invariants?", "tags": ["project"], "trigger": { "refresh_after_consolidation": true } },
+    { "id": "repository-conventions", "name": "Repository Conventions", "source_query": "What conventions, commands, and patterns should engineers follow in this repository?", "tags": ["repository"], "trigger": { "refresh_after_consolidation": true } },
+    { "id": "test-failures", "name": "Test Failure Patterns", "source_query": "What recurring test failures and successful repairs have occurred?", "tags": ["repository"], "trigger": { "refresh_after_consolidation": true } },
+    { "id": "deployment-safety", "name": "Deployment Safety", "source_query": "What deployment constraints, rollback facts, and safety risks are known?", "tags": ["project"], "trigger": { "refresh_after_consolidation": true } },
+    { "id": "project-history", "name": "Project History", "source_query": "What important decisions and tradeoffs shaped this project?", "tags": ["project"], "trigger": { "refresh_after_consolidation": true } }
+  ]
+}

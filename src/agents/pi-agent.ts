@@ -1,24 +1,30 @@
 import { ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentRunner } from "./agent-node.js";
-import { createContext7Tool, createWebSearchTool } from "./tools.js";
-import { Context7Client, WebSearchClient } from "../integrations/research.js";
+import { createContext7Tool } from "./tools.js";
+import { Context7Client } from "../integrations/research.js";
 import { join } from "node:path";
 import { createGondolinSession } from "./gondolin-session.js";
+import { profileForRole } from "./role-profiles.js";
 
 export class PiAgentRunner implements AgentRunner {
   async run(input: { role: string; prompt: string; cwd: string; tools: string[]; metadata: Record<string, string> }): Promise<{ text: string; sessionId: string }> {
+    const profile = profileForRole(input.role);
     const modelRuntime = await ModelRuntime.create({ modelsPath: process.env.PI_MODELS_PATH ?? join(input.cwd, "infra/pi/models.json") });
     const model = modelRuntime.getModel("litellm", "factory/default");
-    const customTools = ["scout", "plan"].includes(input.role)
-      ? [createContext7Tool(new Context7Client()), createWebSearchTool(new WebSearchClient())]
-      : [];
+    const customTools = [
+      ...(profile.tools.includes("context7") ? [createContext7Tool(new Context7Client())] : []),
+
+    ];
     const { session, close } = await createGondolinSession({
       cwd: input.cwd,
       model,
       modelRuntime,
       sessionManager: SessionManager.inMemory(input.cwd),
-      tools: input.tools.filter((tool) => ["read", "bash", "edit", "write", "grep", "find", "ls", "context7", "web_search"].includes(tool)),
+      tools: [...profile.tools],
       customTools,
+      thinkingLevel: profile.thinkingLevel,
+      role: input.role,
+      resourceRoot: process.env.PI_RESOURCE_ROOT,
     });
     let text = "";
     session.subscribe((event) => {

@@ -6,6 +6,9 @@ export interface CorrelationContext {
   phaseId: string;
   agentRole?: string;
   worktreeId?: string;
+  organization?: string;
+  project?: string;
+  repository?: string;
 }
 
 export function documentId(context: CorrelationContext): string {

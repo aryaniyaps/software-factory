@@ -1,0 +1,8 @@
+{
+  "provider": "all",
+  "searchRouting": {
+    "providers": ["openai", "brave", "exa", "tavily", "kagi"],
+    "fallbackOn": ["transient", "quota", "network"]
+  },
+  "webSearch": { "enabled": true }
+}

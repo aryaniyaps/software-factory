@@ -12,6 +12,8 @@ export interface FactoryWorkflowInput {
   deploymentProfile: string;
   sandboxProfile: string;
   attemptId?: string;
+  organization?: string;
+  project?: string;
 }
 
 export interface WorkflowClientLike {
