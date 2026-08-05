@@ -9,7 +9,8 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest",
     "test:run": "vitest run",
-    "dev": "tsx src/server.ts"
+    "dev": "tsx src/server.ts",
+    "worker": "tsx src/temporal/worker-entry.ts"
   },
   "dependencies": {
     "@earendil-works/gondolin": "^0.12.0",
