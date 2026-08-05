@@ -14,6 +14,7 @@ function validSignature(secret: string, body: string, signature: string | undefi
 }
 
 export function createGithubWebhookServer(secret: string, handler: GithubWebhookHandler): Server {
+  const deliveries = new Set<string>();
   return createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += chunk;
@@ -31,6 +32,8 @@ export function createGithubWebhookServer(secret: string, handler: GithubWebhook
       return;
     }
     response.writeHead(202, { "content-type": "application/json" }).end(JSON.stringify({ accepted: true }));
+    if (deliveries.has(deliveryId)) return;
+    deliveries.add(deliveryId);
     await handler.reconcile(deliveryId, JSON.parse(body));
   });
 }

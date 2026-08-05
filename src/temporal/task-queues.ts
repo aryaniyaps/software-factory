@@ -1,6 +1,6 @@
 export const TASK_QUEUES = {
   control: "factory-control",
   agent: "factory-agent",
-  sandbox: "factory-sandbox",
+  build: "factory-build",
   deploy: "factory-deploy",
 } as const;

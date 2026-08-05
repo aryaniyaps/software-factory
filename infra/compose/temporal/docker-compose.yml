@@ -28,6 +28,21 @@ services:
       temporal-postgres:
         condition: service_healthy
 
+  factory-worker:
+    image: node:24-bookworm
+    profiles: ["worker"]
+    working_dir: /app
+    volumes:
+      - ../../..:/app:ro
+    command: sh -lc "npm ci && npm run build && npm run worker"
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: default
+      FACTORY_WORKER_MODULE: /app/dist/temporal/production-worker.js
+    depends_on:
+      temporal:
+        condition: service_started
+
   temporal-ui:
     image: temporalio/ui:latest
     environment:

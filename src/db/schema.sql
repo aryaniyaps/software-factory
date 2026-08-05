@@ -48,3 +48,40 @@ CREATE TABLE IF NOT EXISTS artifacts (
 
 CREATE INDEX IF NOT EXISTS nodes_status_lease_idx ON nodes(status, lease_expires_at);
 CREATE INDEX IF NOT EXISTS events_run_created_idx ON events(run_id, created_at);
+
+CREATE TABLE IF NOT EXISTS factory_runs (
+  run_id TEXT PRIMARY KEY,
+  workflow_id TEXT NOT NULL UNIQUE,
+  task_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  current_node TEXT,
+  failure_reason TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS factory_events (
+  run_id TEXT NOT NULL REFERENCES factory_runs(run_id) ON DELETE CASCADE,
+  event_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (run_id, event_id)
+);
+
+CREATE TABLE IF NOT EXISTS factory_artifacts (
+  run_id TEXT NOT NULL REFERENCES factory_runs(run_id) ON DELETE CASCADE,
+  digest TEXT NOT NULL,
+  image TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (run_id, digest)
+);
+
+CREATE TABLE IF NOT EXISTS factory_deployments (
+  run_id TEXT NOT NULL REFERENCES factory_runs(run_id) ON DELETE CASCADE,
+  profile TEXT NOT NULL,
+  digest TEXT NOT NULL,
+  status TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (run_id, profile)
+);
