@@ -6,12 +6,12 @@ describe("factory Pi resources", () => {
   it("declares required packages and filesystem skills", async () => {
     const manifest = JSON.parse(await readFile(new URL("../../infra/pi/resource-manifest.json", import.meta.url), "utf8")) as { packages: Array<{ name: string }>; requiredSkills: string[]; webSearchConfig: string };
     expect(manifest.packages.map((pkg) => pkg.name)).toEqual(expect.arrayContaining(["pi-web-access", "@dietrichgebert/ponytail", "context-mode"]));
-    expect(manifest.requiredSkills).toContain("skills/engineering/tdd/SKILL.md");
+    expect(manifest.requiredSkills).toContain("src/agents/skills/engineering/tdd/SKILL.md");
     expect(manifest.webSearchConfig).toBe("infra/pi/web-search.json.example");
   });
 
   it("rejects missing skills and resolves a factory-owned root", async () => {
-    await expect(assertRequiredSkills("/missing", ["skills/engineering/tdd/SKILL.md"])).rejects.toThrow("missing factory skill");
+    await expect(assertRequiredSkills("/missing", ["src/agents/skills/engineering/tdd/SKILL.md"])).rejects.toThrow("missing factory skill");
     expect(factoryResourceRoot({ PI_RESOURCE_ROOT: "/factory/pi-resources" })).toBe("/factory/pi-resources");
   });
 });

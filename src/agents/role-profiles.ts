@@ -12,7 +12,7 @@ export interface RoleProfile {
 
 export const ROLE_PROFILES: Record<string, RoleProfile> = {
   scout: {
-    skills: ["skills/engineering/research/SKILL.md", "skills/engineering/wayfinder/SKILL.md"],
+    skills: ["src/agents/skills/engineering/research/SKILL.md", "src/agents/skills/engineering/wayfinder/SKILL.md"],
     tools: ["read", "grep", "find", "ls", "context7", "web_search"],
     extensions: ["pi-web-access", "context-mode"],
     mentalModels: ["architecture", "repository-conventions", "project-history"],
@@ -21,7 +21,7 @@ export const ROLE_PROFILES: Record<string, RoleProfile> = {
     thinkingLevel: "medium",
   },
   plan: {
-    skills: ["skills/engineering/codebase-design/SKILL.md", "skills/engineering/domain-modeling/SKILL.md", "skills/engineering/tdd/SKILL.md"],
+    skills: ["src/agents/skills/engineering/codebase-design/SKILL.md", "src/agents/skills/engineering/domain-modeling/SKILL.md", "src/agents/skills/engineering/tdd/SKILL.md"],
     tools: ["read", "grep", "find", "ls", "context7", "web_search"],
     extensions: ["pi-web-access", "context-mode", "ponytail"],
     mentalModels: ["architecture", "repository-conventions", "project-history"],
@@ -30,7 +30,7 @@ export const ROLE_PROFILES: Record<string, RoleProfile> = {
     thinkingLevel: "high",
   },
   implement: {
-    skills: ["skills/engineering/implement/SKILL.md", "skills/engineering/tdd/SKILL.md"],
+    skills: ["src/agents/skills/engineering/implement/SKILL.md", "src/agents/skills/engineering/tdd/SKILL.md"],
     tools: ["read", "bash", "edit", "write", "grep", "find", "ls", "context7"],
     extensions: ["context-mode", "ponytail"],
     mentalModels: ["repository-conventions", "test-failures"],
@@ -39,7 +39,7 @@ export const ROLE_PROFILES: Record<string, RoleProfile> = {
     thinkingLevel: "medium",
   },
   repair: {
-    skills: ["skills/engineering/diagnosing-bugs/SKILL.md", "skills/engineering/tdd/SKILL.md"],
+    skills: ["src/agents/skills/engineering/diagnosing-bugs/SKILL.md", "src/agents/skills/engineering/tdd/SKILL.md"],
     tools: ["read", "bash", "edit", "write", "grep", "find", "ls", "context7", "web_search"],
     extensions: ["pi-web-access", "context-mode", "ponytail"],
     mentalModels: ["test-failures", "repository-conventions"],
@@ -48,7 +48,7 @@ export const ROLE_PROFILES: Record<string, RoleProfile> = {
     thinkingLevel: "high",
   },
   review: {
-    skills: ["skills/engineering/code-review/SKILL.md", "skills/engineering/diagnosing-bugs/SKILL.md"],
+    skills: ["src/agents/skills/engineering/code-review/SKILL.md", "src/agents/skills/engineering/diagnosing-bugs/SKILL.md"],
     tools: ["read", "grep", "find", "ls", "context7", "web_search"],
     extensions: ["pi-web-access", "context-mode", "ponytail"],
     mentalModels: ["architecture", "deployment-safety", "test-failures"],

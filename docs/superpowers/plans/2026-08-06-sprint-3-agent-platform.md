@@ -87,7 +87,7 @@
 
 - [ ] **Step 1: Write failing resource tests.** Assert the manifest contains `pi-web-access`, `@dietrichgebert/ponytail`, `context-mode`, and Matt Pocock skill paths; verify missing files fail validation and valid resources resolve read-only.
 - [ ] **Step 2: Run focused tests.** Run `npm test -- --run tests/agents/pi-resources.test.ts`. Expected: failure because the manifest/bootstrap module is absent.
-- [ ] **Step 3: Add the manifest and bootstrap command.** Pin package references using Pi’s package install format, copy/verify `skills/engineering` from the repository, install into `PI_RESOURCE_ROOT`, and expose a `bootstrap:pi-resources` script. Never run installation during a workflow Activity.
+- [ ] **Step 3: Add the manifest and bootstrap command.** Pin package references using Pi’s package install format, copy/verify `src/agents/skills/engineering` from the repository, install into `PI_RESOURCE_ROOT`, and expose a `bootstrap:pi-resources` script. Never run installation during a workflow Activity.
 - [ ] **Step 4: Run focused tests and build.** Run `npm test -- --run tests/agents/pi-resources.test.ts && npm run build`.
 - [ ] **Step 5: Commit.** `git add infra/pi scripts src/agents/pi-resources.ts .env.example README.md tests/agents && git commit -m "feat: make pi resources filesystem reproducible"`
 

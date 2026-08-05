@@ -20,7 +20,7 @@ The API is served by Koa. Pi resources are factory-owned and read-only inside Go
 npm run bootstrap:pi-resources
 ```
 
-The bootstrap installs the pinned Pi Web Access, Ponytail, and Context Mode packages and verifies the Matt Pocock engineering skills under `skills/engineering`. Set `PI_RESOURCE_ROOT` to the mounted resource directory used by the worker.
+The bootstrap installs the pinned Pi Web Access, Ponytail, and Context Mode packages and verifies the Matt Pocock engineering skills under `src/agents/skills/engineering`. Set `PI_RESOURCE_ROOT` to the mounted resource directory used by the worker.
 
 Each workflow role has an immutable capability profile in `src/agents/role-profiles.ts`. Scout, plan, implement, repair, and review sessions receive different skills, tools, web policy, and Hindsight mental models.
 

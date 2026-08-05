@@ -4,12 +4,12 @@
     { "name": "@dietrichgebert/ponytail", "version": "4.8.4", "spec": "npm:@dietrichgebert/ponytail@4.8.4" },
     { "name": "context-mode", "version": "1.0.169", "spec": "npm:context-mode@1.0.169" }
   ],
-  "skillsRoot": "skills/engineering",
+  "skillsRoot": "src/agents/skills/engineering",
   "webSearchConfig": "infra/pi/web-search.json.example",
   "requiredSkills": [
-    "skills/engineering/tdd/SKILL.md",
-    "skills/engineering/code-review/SKILL.md",
-    "skills/engineering/diagnosing-bugs/SKILL.md",
-    "skills/engineering/implement/SKILL.md"
+    "src/agents/skills/engineering/tdd/SKILL.md",
+    "src/agents/skills/engineering/code-review/SKILL.md",
+    "src/agents/skills/engineering/diagnosing-bugs/SKILL.md",
+    "src/agents/skills/engineering/implement/SKILL.md"
   ]
 }

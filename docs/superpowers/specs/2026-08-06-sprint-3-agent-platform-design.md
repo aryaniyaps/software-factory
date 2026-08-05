@@ -43,7 +43,7 @@ The memory adapter exposes `retain`, `recall`, `reflect`, mental-model retrieval
 
 The factory owns a versioned resource manifest under `infra/pi`. It pins:
 
-- Matt Pocock engineering skills copied into `skills/engineering`;
+- Matt Pocock engineering skills copied into `src/agents/skills/engineering`;
 - `pi-web-access`;
 - `@dietrichgebert/ponytail`;
 - `context-mode`.
