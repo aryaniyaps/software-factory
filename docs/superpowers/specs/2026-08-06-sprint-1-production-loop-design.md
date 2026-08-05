@@ -6,7 +6,7 @@
 
 ## Goal
 
-Turn the MVP graph into a self-hosted production execution loop by using Pi's official Gondolin integration for sandboxed agent/tool execution, replacing in-memory scheduling with Postgres leases, consuming organization-scoped GitHub Projects v2 across multiple repositories, and deploying immutable Docker images over SSH with health checks and rollback.
+Turn the MVP graph into a self-hosted production execution loop by using Temporal as the durable graph execution authority, Pi's official Gondolin integration for sandboxed agent/tool execution, organization-scoped GitHub Projects v2 across multiple repositories, and immutable Docker images over SSH with health checks and rollback.
 
 ## Decisions
 
@@ -18,9 +18,11 @@ Pi remains the host-side agent process, while its built-in tools are routed into
 
 Custom research/memory tools remain host-side network clients. They receive no host filesystem or shell access. Model credentials stay outside the VM where possible and model traffic is routed through LiteLLM.
 
-### Postgres is the scheduler authority
+### Temporal is the execution authority
 
-The scheduler uses the existing Postgres schema and `FOR UPDATE SKIP LOCKED` leasing query. Workers are stateless processes identified by worker IDs. A lease expiry requeues abandoned nodes. State transitions and events are persisted before a worker acknowledges completion.
+Each factory run is a Temporal Workflow. The graph is expressed as deterministic Workflow code; independent branches use child Workflows or parallel Activity calls. Activities perform Pi/Gondolin work, tests, scans, GitHub updates, and deployment. Temporal owns event history, retries, timers, cancellation, heartbeats, worker task queues, and recovery after process failure.
+
+Postgres stores the factory task catalog, project registry, artifacts, correlation metadata, and reporting projections. It is not a second scheduler and does not implement leases.
 
 ### GitHub Organization Projects is the first task provider
 
@@ -37,25 +39,26 @@ The deployer uses `execFile("ssh", args)` and never constructs a shell command f
 ```text
 Organization GitHub Project item / API
       -> ProjectRegistry resolves repository + execution profiles
-      -> Postgres task + graph
-      -> worker lease
+      -> Postgres task catalog + Temporal Workflow
+      -> Temporal task queue
       -> host Git worktree
       -> Gondolin VM for agent and project commands
-      -> deterministic gates
+      -> retryable Activities and deterministic gates
       -> review and artifact digest
-      -> SSH Docker deployment
+      -> SSH Docker deployment Activity
       -> health check
       -> rollback or terminal success
 ```
 
-Independent tickets lease concurrently. A ticket's phases remain sequential until the graph supports explicit fan-out/fan-in edges.
+Independent tickets run concurrently as separate Temporal child Workflows. A ticket's phases remain sequential until the graph supports explicit fan-out/fan-in edges.
 
 ## Required components
 
 - `GondolinSessionFactory`: loads the official Pi Gondolin extension through `DefaultResourceLoader` and disposes the VM with the session.
 - `GondolinWorkspaceProvider`: thin adapter around the official Gondolin SDK for deterministic commands and file operations; it contains no isolation logic.
-- `PostgresSchedulerStore`: implements the scheduler store against the existing database repository.
-- `WorkerProcess`: polls, leases, executes, records events, and renews/abandons leases safely.
+- `FactoryWorkflow`: durable graph Workflow with deterministic topology, signals, queries, cancellation, and fan-out/fan-in.
+- `TemporalWorker`: registers Workflow code and Activities on named task queues.
+- `FactoryActivities`: wraps Gondolin, Git, tests, scans, GitHub, artifacts, and deployment; each Activity has explicit timeout/retry policy.
 - `GitHubProjectProvider`: reads organization Project v2 items, resolves custom fields, normalizes tasks across repositories, and performs idempotent field/comment updates.
 - `SshDockerExecutor`: executes fixed Docker argv sequences on a configured host and validates image digests.
 - `HealthChecker`: HTTP checks with timeout and bounded retries.
@@ -66,23 +69,24 @@ Independent tickets lease concurrently. A ticket's phases remain sequential unti
 - No host Docker socket, host home directory, SSH agent, or broad secret mounts enter Gondolin.
 - Only the attempt worktree is mounted into the VM.
 - Network access is policy-configured through Gondolin; default is deny except required package/model/documentation endpoints.
-- GitHub and deployment credentials are held by the host control plane and never exposed as Pi tool results.
+- GitHub and deployment credentials are held by Activities/host workers and never exposed as Pi tool results.
 - Project item text, issue text, and repository content are untrusted prompt input.
+- Workflow code remains deterministic: no direct filesystem, network, clock, random, or process calls from Workflow definitions.
 - All external commands use argument arrays and fixed executable names.
 
 ## Verification
 
 The sprint is complete when tests prove:
 
-1. Pi sessions load the official Gondolin extension and clean up the VM on shutdown.
-2. Project commands run in the VM, not the host process.
-3. Two workers cannot lease the same node.
-4. Expired leases are reclaimed and events remain ordered.
+1. Temporal resumes a Workflow after a worker process is terminated.
+2. Pi sessions load the official Gondolin extension and clean up the VM with Activity shutdown.
+3. Project commands run in the VM, not the host process.
+4. Activity retry policies distinguish transient failures from non-retryable policy failures.
 5. Organization Project v2 items from multiple repositories normalize into tasks and status updates are idempotent.
 6. A digest-pinned Docker deployment passes health checks.
 7. A failed health check restores the previous digest.
 8. Two independent tasks execute concurrently in separate worktrees and VMs.
-9. A worker restart resumes the graph without duplicate deployment.
+9. Workflow cancellation and retry Signals are durable and observable.
 
 ## Non-goals
 
@@ -90,5 +94,6 @@ The sprint is complete when tests prove:
 - OpenShell/OpenSandbox integration in this sprint.
 - Kubernetes or multi-region deployment.
 - Multiple issue trackers.
+- A custom scheduler, lease protocol, or workflow durability layer.
 - A web dashboard.
 - Autonomous merge conflict resolution beyond a recorded failure.
