@@ -31,7 +31,7 @@ export class GitWorktreeManager {
 
   async remove(path: string): Promise<void> {
     const repository = this.repositories.get(path);
-    if (!repository) throw new Error(`unknown worktree: ${path}`);
+    if (!repository) return;
     await run("git", ["-C", repository, "worktree", "remove", "--force", path]);
     this.repositories.delete(path);
   }
