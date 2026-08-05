@@ -2,7 +2,9 @@
   "name": "software-factory",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest",
@@ -10,10 +12,14 @@
     "dev": "tsx src/server.ts"
   },
   "dependencies": {
+    "@earendil-works/gondolin": "^0.12.0",
     "@earendil-works/pi-coding-agent": "latest",
+    "@temporalio/client": "^1.22.0",
+    "@temporalio/worker": "^1.22.0",
+    "@temporalio/workflow": "^1.22.0",
+    "@vectorize-io/hindsight-client": "latest",
     "pg": "latest",
-    "typebox": "latest",
-    "@vectorize-io/hindsight-client": "latest"
+    "typebox": "latest"
   },
   "devDependencies": {
     "@types/node": "latest",
