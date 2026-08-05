@@ -1,0 +1,9 @@
+model_list:
+  - model_name: factory/default
+    litellm_params:
+      model: os.environ/FACTORY_MODEL
+      api_key: os.environ/FACTORY_MODEL_API_KEY
+
+litellm_settings:
+  success_callback: ["prometheus"]
+  failure_callback: ["prometheus"]
