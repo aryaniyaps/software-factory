@@ -1,0 +1,19 @@
+import { describe, expect, it } from "vitest";
+import { profileForRole, roleLoaderOptions } from "../../src/agents/role-profiles.js";
+
+describe("Pi role profiles", () => {
+  it("defines distinct capabilities for every workflow role", () => {
+    expect(profileForRole("scout").tools).toContain("web_search");
+    expect(profileForRole("implement").skills).toContain("skills/engineering/implement/SKILL.md");
+    expect(profileForRole("repair").skills).toContain("skills/engineering/diagnosing-bugs/SKILL.md");
+    expect(profileForRole("review").skills).toContain("skills/engineering/code-review/SKILL.md");
+    expect(profileForRole("plan").mentalModels).toContain("architecture");
+    expect(() => profileForRole("unknown")).toThrow("unknown Pi role");
+  });
+
+  it("constructs role-specific loader paths under the factory root", () => {
+    const options = roleLoaderOptions("review", "/factory/resources");
+    expect(options.agentDir).toBe("/factory/resources");
+    expect(options.additionalSkillPaths).toEqual(expect.arrayContaining(["/factory/resources/skills/engineering/code-review/SKILL.md"]));
+  });
+});
