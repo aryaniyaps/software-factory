@@ -1,7 +1,7 @@
 import { ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentRunner } from "./agent-node.js";
-import { createContext7Tool, createWebSearchTool } from "./tools.js";
-import { Context7Client, WebSearchClient } from "../integrations/research.js";
+import { createContext7Tool } from "./tools.js";
+import { Context7Client } from "../integrations/research.js";
 import { join } from "node:path";
 import { createGondolinSession } from "./gondolin-session.js";
 import { profileForRole } from "./role-profiles.js";
@@ -13,7 +13,7 @@ export class PiAgentRunner implements AgentRunner {
     const model = modelRuntime.getModel("litellm", "factory/default");
     const customTools = [
       ...(profile.tools.includes("context7") ? [createContext7Tool(new Context7Client())] : []),
-      ...(profile.webSearch ? [createWebSearchTool(new WebSearchClient())] : []),
+
     ];
     const { session, close } = await createGondolinSession({
       cwd: input.cwd,
