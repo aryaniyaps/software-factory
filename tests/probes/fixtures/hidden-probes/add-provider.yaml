@@ -1,0 +1,19 @@
+schemaVersion: probe.v1
+id: PRB-ADD-PROVIDER
+title: Add payment provider adapter
+requirement: Add a second payment provider behind the existing checkout port without changing public API signatures.
+difficulty: 5
+acceptance:
+  - AC-PROBE-PROVIDER
+adapter:
+  command: test
+  args:
+    - -f
+    - provider.marker
+repeats: 2
+maxVariance: 0.05
+startingMarkers:
+  baseline:
+    - checkout.port
+  candidate:
+    - checkout.port

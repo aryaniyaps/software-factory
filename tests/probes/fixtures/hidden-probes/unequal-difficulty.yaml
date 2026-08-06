@@ -1,0 +1,19 @@
+schemaVersion: probe.v1
+id: PRB-UNEQUAL
+title: Unequal starting difficulty
+requirement: Add a compatibility shim for the legacy transport adapter.
+difficulty: 5
+acceptance:
+  - AC-PROBE-UNEQUAL
+adapter:
+  command: test
+  args:
+    - -f
+    - transport.shim
+repeats: 1
+startingMarkers:
+  baseline:
+    - transport.core
+  candidate:
+    - transport.core
+    - transport.shim
