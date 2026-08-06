@@ -12,7 +12,14 @@ import { createContext7McpTools } from "./context7-mcp-tools.js";
 import { createGetEvidenceTool, createListEvidenceMetaTool } from "./factory-evidence-tools.js";
 
 export class PiAgentRunner implements AgentRunner {
-  async run(input: { role: string; prompt: string; cwd: string; tools: string[]; metadata: Record<string, string> }): Promise<{ text: string; sessionId: string }> {
+  async run(input: {
+    role: string;
+    prompt: string;
+    cwd: string;
+    tools: string[];
+    metadata: Record<string, string>;
+    systemPrompt?: string;
+  }): Promise<{ text: string; sessionId: string }> {
     const harness = harnessForRole(input.role);
     const allowedTools = toolsForRole(input.role);
     const gateway = loadGatewayPolicyFromAllowlist(allowedTools);
@@ -36,17 +43,17 @@ export class PiAgentRunner implements AgentRunner {
       thinkingLevel: harness.thinkingLevel,
       role: input.role,
       resourceRoot: process.env.PI_RESOURCE_ROOT,
+      systemPrompt: input.systemPrompt,
     });
     let text = "";
     session.subscribe((event) => {
       if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") text += event.assistantMessageEvent.delta;
     });
-    const prompt = `${input.prompt}\n\nCorrelation metadata: ${JSON.stringify(input.metadata)}`;
     await withSpan("factory.agent.turn", {
       "factory.agent.role": input.role,
       ...Object.fromEntries(Object.entries(input.metadata).map(([key, value]) => [`factory.${key}`, value])),
     }, async () => {
-      await session.prompt(prompt);
+      await session.prompt(input.prompt);
     });
     close();
     return { text: normalizeAgentText(input.role, text), sessionId: session.sessionId };

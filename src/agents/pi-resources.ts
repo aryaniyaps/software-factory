@@ -61,9 +61,9 @@ export async function bootstrapRoleHarnesses(destination: string, sourceRoot: st
     const promptSource = join(sourceRoot, "infra/pi/roles", role, "prompts", "system.md");
     const promptFallback = join(sourceRoot, "src/agents/prompts", `${role}.md`);
     try {
-      await cp(promptSource, join(roleDir, spec.systemPromptFile), { force: true });
+      await cp(promptSource, join(roleDir, spec.systemPromptPath), { force: true });
     } catch {
-      await cp(promptFallback, join(roleDir, spec.systemPromptFile), { force: true });
+      await cp(promptFallback, join(roleDir, spec.systemPromptPath), { force: true });
     }
 
     await writeFile(join(roleDir, "mcp", "servers.json"), JSON.stringify({

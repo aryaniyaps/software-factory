@@ -34,12 +34,12 @@ function loadSystemPrompt(agentDir: string, role: string): string | undefined {
   }
 }
 
-export async function createGondolinSession(options: GondolinSessionOptions): Promise<{ session: AgentSession; close: () => void }> {
-  const { role, resourceRoot, factoryRoot, ...sessionOptions } = options;
+export async function createGondolinSession(options: GondolinSessionOptions & { systemPrompt?: string }): Promise<{ session: AgentSession; close: () => void }> {
+  const { role, resourceRoot, factoryRoot, systemPrompt: systemPromptOverride, ...sessionOptions } = options;
   const loaderInput = role
     ? roleLoaderOptionsForWorktree({ role, cwd: factoryRoot, resourceRoot })
     : { agentDir: resourceRoot ?? process.env.PI_RESOURCE_ROOT ?? factoryRoot, additionalSkillPaths: [] as string[] };
-  const systemPrompt = role ? loadSystemPrompt(loaderInput.agentDir, role) : undefined;
+  const systemPrompt = systemPromptOverride ?? (role ? loadSystemPrompt(loaderInput.agentDir, role) : undefined);
   const resourceLoader = new DefaultResourceLoader({
     cwd: options.cwd,
     agentDir: loaderInput.agentDir,
