@@ -27,6 +27,7 @@ import type { FactoryWorkflowInput } from "./client.js";
 import { createProductionWorkers } from "./worker-main.js";
 import { instrumentActivities } from "../telemetry/bootstrap.js";
 import { createVerifierActivities } from "./activities/verifier-impl.js";
+import { createHealthActivities } from "./activities/health.js";
 
 const execFile = promisify(nodeExecFile);
 
@@ -111,6 +112,17 @@ export async function startWorkers(): Promise<void> {
   const hiddenScenariosRoot = process.env.FACTORY_HIDDEN_SCENARIOS_ROOT
     ?? join(process.cwd(), "factory/hidden-scenarios");
   const verifier = createVerifierActivities({ hiddenScenariosRoot });
+  const healthActivities = createHealthActivities({
+    enqueueWorkOrder: async (input) => {
+      await projection.recordEvent({
+        runId: input.runId,
+        eventId: `debt-work-order:${input.workOrder.id}`,
+        type: "debt_work_order_enqueued",
+        payload: input.workOrder,
+      });
+      return { enqueued: true, workOrderId: input.workOrder.id };
+    },
+  });
   const activities = instrumentActivities({
     ...repository,
     ...agent,
@@ -139,6 +151,7 @@ export async function startWorkers(): Promise<void> {
       await projection.recordRun({ runId: input.runId, workflowId: `factory-${input.runId}`, taskId: input.taskId, status: input.status });
     },
     runBehavioralVerification: verifier.runBehavioralVerification,
+    ...healthActivities,
   });
   const workflowsPath = fileURLToPath(new URL("./workflows", import.meta.url));
   await Promise.all((await createProductionWorkers({ workflowsPath, activities })).map((worker) => worker.run()));

@@ -171,6 +171,71 @@ export interface TaskStatusInput {
   runId: string;
 }
 
+export interface CollectRepositoryChurnInput {
+  runId: string;
+  repositoryRoot: string;
+}
+
+export interface CollectRepositoryChurnResult {
+  entries: readonly import("../../health/hotspots.js").ChurnEntry[];
+}
+
+export interface CollectRepositoryCoChangesInput {
+  runId: string;
+  repositoryRoot: string;
+}
+
+export interface CollectRepositoryCoChangesResult {
+  commits: readonly import("../../health/hotspots.js").CommitFileChanges[];
+}
+
+export interface SampleNightlyProbesInput {
+  runId: string;
+  probeBankRoot: string;
+  probeCount: number;
+}
+
+export interface SampleNightlyProbesResult {
+  probeIds: readonly string[];
+}
+
+export interface RunRepositoryHealthLoopInput {
+  runId: string;
+  repositoryRoot: string;
+  churnEntries: readonly import("../../health/hotspots.js").ChurnEntry[];
+  commitFileChanges: readonly import("../../health/hotspots.js").CommitFileChanges[];
+  releases: readonly import("../../health/repository-health.js").ReleaseRecord[];
+  outcomes: Readonly<Record<string, import("../../health/repository-health.js").MaintenanceOutcome>>;
+  probeIds: readonly string[];
+  workOrderSequence: number;
+}
+
+export interface CalibrateOracleThresholdsInput {
+  runId: string;
+  samples: readonly import("../../assurance/calibration.js").CalibrationSample[];
+  current: import("../../assurance/calibration.js").ThresholdVersion;
+  candidate?: import("../../assurance/calibration.js").ThresholdVersion;
+  evaluatorOracleId: string;
+  candidateOracleId: string;
+}
+
+export interface CalibrateOracleThresholdsResult {
+  heldOutScore: number;
+  promoted: boolean;
+  promotedVersion: string;
+  reason: string;
+}
+
+export interface EnqueueDebtWorkOrderInput {
+  runId: string;
+  workOrder: import("../../health/repository-health.js").DebtWorkOrder;
+}
+
+export interface EnqueueDebtWorkOrderResult {
+  enqueued: boolean;
+  workOrderId: string;
+}
+
 export interface FactoryActivities {
   prepareRepository(input: FactoryWorkflowInput): Promise<RepositoryPreparation>;
   createWorktree(input: WorktreeInput): Promise<WorktreeResult>;
@@ -190,6 +255,12 @@ export interface FactoryActivities {
   rollbackDeployment(input: RollbackDeploymentInput): Promise<RollbackDeploymentResult>;
   healthCheck(input: HealthCheckInput): Promise<{ healthy: boolean; url: string }>;
   updateTaskStatus(input: TaskStatusInput): Promise<void>;
+  collectRepositoryChurn(input: CollectRepositoryChurnInput): Promise<CollectRepositoryChurnResult>;
+  collectRepositoryCoChanges(input: CollectRepositoryCoChangesInput): Promise<CollectRepositoryCoChangesResult>;
+  sampleNightlyProbes(input: SampleNightlyProbesInput): Promise<SampleNightlyProbesResult>;
+  runRepositoryHealthLoop(input: RunRepositoryHealthLoopInput): Promise<import("../../health/repository-health.js").RepositoryHealthLoopResult>;
+  calibrateOracleThresholds(input: CalibrateOracleThresholdsInput): Promise<CalibrateOracleThresholdsResult>;
+  enqueueDebtWorkOrder(input: EnqueueDebtWorkOrderInput): Promise<EnqueueDebtWorkOrderResult>;
 }
 
 export declare function prepareRepository(input: FactoryWorkflowInput): Promise<RepositoryPreparation>;
@@ -210,3 +281,9 @@ export declare function observeDeployment(input: ObserveDeploymentInput): Promis
 export declare function rollbackDeployment(input: RollbackDeploymentInput): Promise<RollbackDeploymentResult>;
 export declare function healthCheck(input: HealthCheckInput): Promise<{ healthy: boolean; url: string }>;
 export declare function updateTaskStatus(input: TaskStatusInput): Promise<void>;
+export declare function collectRepositoryChurn(input: CollectRepositoryChurnInput): Promise<CollectRepositoryChurnResult>;
+export declare function collectRepositoryCoChanges(input: CollectRepositoryCoChangesInput): Promise<CollectRepositoryCoChangesResult>;
+export declare function sampleNightlyProbes(input: SampleNightlyProbesInput): Promise<SampleNightlyProbesResult>;
+export declare function runRepositoryHealthLoop(input: RunRepositoryHealthLoopInput): Promise<import("../../health/repository-health.js").RepositoryHealthLoopResult>;
+export declare function calibrateOracleThresholds(input: CalibrateOracleThresholdsInput): Promise<CalibrateOracleThresholdsResult>;
+export declare function enqueueDebtWorkOrder(input: EnqueueDebtWorkOrderInput): Promise<EnqueueDebtWorkOrderResult>;
