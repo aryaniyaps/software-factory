@@ -1,5 +1,6 @@
 import { Type, type Static, type TSchema } from "typebox";
 import { Check, Errors } from "typebox/value";
+import { parseCriticReport } from "../assurance/maintainability/findings.js";
 import { FailureEnvelopeSchema, type FailureEnvelope } from "./failures.js";
 
 export const FACTORY_NODE_NAMES = [
@@ -9,7 +10,7 @@ export const FACTORY_NODE_NAMES = [
 export const FactoryNodeNameSchema = Type.Union(FACTORY_NODE_NAMES.map((name) => Type.Literal(name)) as TSchema[]);
 export type FactoryNodeName = (typeof FACTORY_NODE_NAMES)[number];
 
-export const AgentRoles = ["scout", "plan", "implement", "repair", "review"] as const;
+export const AgentRoles = ["scout", "plan", "implement", "repair", "review", "maintainability_critic"] as const;
 export const AgentRoleSchema = Type.Union(AgentRoles.map((role) => Type.Literal(role)) as TSchema[]);
 export type AgentRole = (typeof AgentRoles)[number];
 
@@ -129,9 +130,20 @@ function parse<T>(schema: TSchema, value: unknown): T {
   throw new Error(`Invalid node contract: ${error?.message || "schema mismatch"}`);
 }
 
+function validateMaintainabilityCriticData(data: JsonObject): void {
+  if (!("report" in data)) {
+    throw new Error("Invalid maintainability critic output: report required in data");
+  }
+  parseCriticReport(data.report);
+}
+
 export function parseAgentOutput(value: unknown): AgentOutput {
   const candidate = typeof value === "string" ? JSON.parse(value) : value;
-  return parse<AgentOutput>(AgentOutputSchema, candidate);
+  const output = parse<AgentOutput>(AgentOutputSchema, candidate);
+  if (output.role === "maintainability_critic") {
+    validateMaintainabilityCriticData(output.data);
+  }
+  return output;
 }
 
 export function parseNodeResult<T>(value: unknown): NodeResult<T> {

@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { maintainabilityCriticPrompt } from "./roles/maintainability-critic.js";
 
 export interface RoleProfile {
   skills: readonly string[];
@@ -56,6 +57,22 @@ export const ROLE_PROFILES: Record<string, RoleProfile> = {
     webSearch: true,
     thinkingLevel: "high",
   },
+  maintainability_critic: {
+    skills: [
+      "src/agents/skills/engineering/code-review/SKILL.md",
+      "src/agents/skills/engineering/improve-codebase-architecture/SKILL.md",
+    ],
+    tools: ["read", "grep", "find", "ls", "context7"],
+    extensions: ["context-mode"],
+    mentalModels: ["architecture", "repository-conventions", "project-history"],
+    hindsightOperations: ["recall"],
+    webSearch: false,
+    thinkingLevel: "high",
+  },
+};
+
+export const ROLE_PROMPT_HINTS: Partial<Record<string, string>> = {
+  maintainability_critic: maintainabilityCriticPrompt,
 };
 
 export function profileForRole(role: string): RoleProfile {
