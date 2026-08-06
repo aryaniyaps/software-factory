@@ -28,7 +28,16 @@ const AgentOutputBase = {
 } as const;
 
 export const AgentOutputSchema = Type.Union(AgentRoles.map((role) => Type.Object({ role: Type.Literal(role), ...AgentOutputBase }, { additionalProperties: false })) as TSchema[]);
-export type AgentOutput = Readonly<Static<typeof AgentOutputSchema>>;
+
+export interface AgentOutputBase {
+  readonly schemaVersion: "agent-output.v1";
+  readonly status: "succeeded" | "failed" | "abstained";
+  readonly summary: string;
+  readonly evidenceRefs: readonly string[];
+  readonly data: JsonObject;
+}
+
+export type AgentOutput = AgentOutputBase & { readonly role: AgentRole };
 
 export const AgentInputSchema = JsonObjectSchema;
 export type AgentInput = object;
@@ -56,6 +65,38 @@ export interface NodeResult<T> {
   readonly failure?: FailureEnvelope;
 }
 
+export const NodeAttemptRefSchema = Type.Object({
+  node: FactoryNodeNameSchema,
+  attemptId: Type.String({ minLength: 1 }),
+  status: Type.Union([Type.Literal("succeeded"), Type.Literal("failed"), Type.Literal("cancelled")]),
+}, { additionalProperties: false });
+export interface NodeAttemptRef {
+  readonly node: FactoryNodeName;
+  readonly attemptId: string;
+  readonly status: "succeeded" | "failed" | "cancelled";
+}
+
+export const WorkflowBudgetStateSchema = Type.Object({
+  maxAgentAttempts: Type.Integer({ minimum: 1 }),
+  maxRepairAttempts: Type.Integer({ minimum: 0 }),
+  wallClockBudgetMs: Type.Integer({ minimum: 1 }),
+  tokenBudget: Type.Integer({ minimum: 1 }),
+  agentAttemptsUsed: Type.Integer({ minimum: 0 }),
+  repairAttemptsUsed: Type.Integer({ minimum: 0 }),
+  wallClockUsedMs: Type.Integer({ minimum: 0 }),
+  tokensUsed: Type.Integer({ minimum: 0 }),
+}, { additionalProperties: false });
+export interface WorkflowBudgetState {
+  readonly maxAgentAttempts: number;
+  readonly maxRepairAttempts: number;
+  readonly wallClockBudgetMs: number;
+  readonly tokenBudget: number;
+  readonly agentAttemptsUsed: number;
+  readonly repairAttemptsUsed: number;
+  readonly wallClockUsedMs: number;
+  readonly tokensUsed: number;
+}
+
 export const FactoryRunStateSchema = Type.Object({
   schemaVersion: Type.Literal("factory-run.v1"),
   runId: Type.String({ minLength: 1 }),
@@ -64,16 +105,22 @@ export const FactoryRunStateSchema = Type.Object({
     Type.Literal("abstained"), Type.Literal("failed"), Type.Literal("cancelled"),
   ]),
   completedNodes: Type.Array(FactoryNodeNameSchema),
+  nodeAttempts: Type.Array(NodeAttemptRefSchema),
   currentNode: Type.Optional(FactoryNodeNameSchema),
   failedNode: Type.Optional(FactoryNodeNameSchema),
+  budget: Type.Optional(WorkflowBudgetStateSchema),
+  continuationGeneration: Type.Optional(Type.Integer({ minimum: 0 })),
 }, { additionalProperties: false });
 export interface FactoryRunState {
   readonly schemaVersion: "factory-run.v1";
   readonly runId: string;
   readonly status: "running" | "succeeded" | "rolled_back" | "abstained" | "failed" | "cancelled";
   readonly completedNodes: readonly FactoryNodeName[];
+  readonly nodeAttempts: readonly NodeAttemptRef[];
   readonly currentNode?: FactoryNodeName;
   readonly failedNode?: FactoryNodeName;
+  readonly budget?: WorkflowBudgetState;
+  readonly continuationGeneration?: number;
 }
 
 function parse<T>(schema: TSchema, value: unknown): T {

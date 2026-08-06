@@ -8,6 +8,7 @@ import { parseAgentOutput } from "../../contracts/nodes.js";
 export interface ProductionActivityDependencies {
   prepareRepository: FactoryActivities["prepareRepository"];
   createWorktree: FactoryActivities["createWorktree"];
+  removeWorktree: FactoryActivities["removeWorktree"];
   agentRunner: AgentRunner;
   workspace: WorkspaceProvider;
   health: { wait(url: string, options?: { attempts?: number; intervalMs?: number }): Promise<void> };
@@ -20,6 +21,7 @@ export function createProductionActivities(dependencies: ProductionActivityDepen
   return {
     prepareRepository: dependencies.prepareRepository,
     createWorktree: dependencies.createWorktree,
+    removeWorktree: dependencies.removeWorktree,
     securityScan: async (input) => {
       const workspace = await dependencies.workspace.create({ path: input.worktree.path, network: "none" });
       try {

@@ -82,6 +82,7 @@ export interface TaskStatusInput {
 export interface FactoryActivities {
   prepareRepository(input: FactoryWorkflowInput): Promise<RepositoryPreparation>;
   createWorktree(input: WorktreeInput): Promise<WorktreeResult>;
+  removeWorktree(path: string): Promise<void>;
   runAgent(input: AgentActivityInput): Promise<AgentActivityResult>;
   securityScan(input: SecurityScanInput): Promise<SecurityScanResult>;
   runChecks(input: ChecksInput): Promise<ChecksResult>;
@@ -93,6 +94,7 @@ export interface FactoryActivities {
 
 export declare function prepareRepository(input: FactoryWorkflowInput): Promise<RepositoryPreparation>;
 export declare function createWorktree(input: WorktreeInput): Promise<WorktreeResult>;
+export declare function removeWorktree(path: string): Promise<void>;
 export declare function runAgent(input: AgentActivityInput): Promise<AgentActivityResult>;
 export declare function securityScan(input: SecurityScanInput): Promise<SecurityScanResult>;
 export declare function runChecks(input: ChecksInput): Promise<ChecksResult>;
