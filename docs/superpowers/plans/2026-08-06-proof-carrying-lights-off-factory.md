@@ -27,25 +27,29 @@
 ```text
 SF-01
   -> SF-02, SF-03
-SF-02 + SF-03
+SF-01 + SF-02 + SF-03
   -> SF-04, SF-05, SF-06, SF-07
-SF-04 + SF-06
-  -> SF-08, SF-09
-SF-08 + SF-09
+SF-01 + SF-03
+  -> SF-08
+SF-01 + SF-06 + SF-08
+  -> SF-09
+SF-02 + SF-08 + SF-09
   -> SF-10
-SF-06 + SF-07
+SF-01 + SF-02 + SF-06 + SF-07
   -> SF-11
 SF-11
   -> SF-12
-SF-04 + SF-05 + SF-07 + SF-11
+SF-01 + SF-03 + SF-06 + SF-07 + SF-08 + SF-10
   -> SF-13
-SF-03 + SF-04 + SF-05 + SF-07 + SF-13
+SF-01 + SF-02 + SF-03 + SF-04 + SF-05 + SF-07 + SF-11
   -> SF-14
-SF-14
+SF-03 + SF-04 + SF-06 + SF-14
   -> SF-15
-SF-10 + SF-13 + SF-15
-  -> SF-16, SF-17
-all query projections
+SF-08 + SF-10 + SF-13 + SF-15
+  -> SF-16
+SF-03 + SF-04 + SF-07 + SF-11 + SF-13 + SF-16
+  -> SF-17
+SF-03 + SF-04 + SF-14
   -> SF-18
 ```
 
@@ -401,4 +405,3 @@ all query projections
 - [ ] Confirm implementer cannot access hidden evaluator material.
 - [ ] Confirm no production dependency/container version uses `latest`.
 - [ ] Confirm every architecture acceptance criterion has a passing test or scenario reference.
-
