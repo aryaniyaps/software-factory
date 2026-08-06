@@ -1,0 +1,10 @@
+{
+  "bankVersion": "probe-bank.v1",
+  "probes": [
+    "add-provider.yaml",
+    "already-done.yaml",
+    "leaked-requirement.yaml",
+    "noisy-variance.yaml",
+    "unequal-difficulty.yaml"
+  ]
+}

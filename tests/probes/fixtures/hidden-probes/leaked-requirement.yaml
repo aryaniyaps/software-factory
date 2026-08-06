@@ -1,0 +1,18 @@
+schemaVersion: probe.v1
+id: PRB-LEAKED
+title: Leaked implementation detail
+requirement: Rename the internal CandidateSecretService class to match the new module layout.
+difficulty: 4
+acceptance:
+  - AC-PROBE-LEAK
+adapter:
+  command: test
+  args:
+    - -f
+    - stable.marker
+repeats: 1
+startingMarkers:
+  baseline:
+    - stable.marker
+  candidate:
+    - stable.marker
