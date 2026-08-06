@@ -4,7 +4,8 @@ import {
   verifyProvenanceSignature,
   type BuildProvenance,
 } from "../../security/provenance.js";
-import type { BuildInput, ChecksInput, ChecksResult, ArtifactResult } from "./types.js";
+import type { BuildInput, ChecksInput, ChecksResult, ArtifactResult, FitnessAssessmentResult } from "./types.js";
+import { runFitnessAssessment } from "../../assurance/fitness/runner.js";
 
 export interface BuildVm {
   exec(command: string, args: string[], options?: { timeoutMs?: number; maxOutputBytes?: number }): Promise<{ exitCode: number; stdout: string; stderr: string }>;
@@ -33,6 +34,7 @@ export function createBuildActivities(dependencies: {
   signingKey?: string;
 }): {
   runChecks(input: ChecksInput): Promise<ChecksResult>;
+  runFitnessAssessment(input: ChecksInput): Promise<FitnessAssessmentResult>;
   buildArtifact(input: BuildInput): Promise<ArtifactResult>;
 } {
   const maxOutputBytes = dependencies.maxOutputBytes ?? 256_000;
@@ -51,6 +53,25 @@ export function createBuildActivities(dependencies: {
       } finally {
         await vm.close();
       }
+    },
+    async runFitnessAssessment(input) {
+      const result = await runFitnessAssessment({
+        context: {
+          repoRoot: input.worktree.path,
+          languages: ["typescript", "javascript"],
+          primaryLanguage: "typescript",
+        },
+        candidateRoot: input.worktree.path,
+        baselineRoot: input.worktree.path,
+      });
+      return {
+        outcome: result.outcome,
+        policyVersion: result.policyVersion,
+        shadowMode: result.shadowMode,
+        findings: [...result.findings],
+        rawSubScores: [...result.rawSubScores],
+        missingCapabilities: [...result.missingCapabilities],
+      };
     },
     async buildArtifact(input) {
       const vm = await dependencies.runtime.createForWorktree({

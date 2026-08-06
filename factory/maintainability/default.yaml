@@ -1,0 +1,9 @@
+schemaVersion: maintainability-policy.v1
+policyVersion: default-2026-08-06
+maxRefactorAttempts: 2
+maxEvidenceCollectionRounds: 1
+baselineRegression:
+  minRelativeDelta: 0.15
+  minConfidence: 0.7
+contradictionResolution:
+  maxRounds: 1

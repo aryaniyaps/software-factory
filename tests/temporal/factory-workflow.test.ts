@@ -75,6 +75,21 @@ function createActivities(options: MockOptions = {}) {
       if (options.exhaustedBudget) {
         return { sessionId: role, output: agentOutput(role, "abstained") };
       }
+      if (role === "maintainability_critic") {
+        return {
+          sessionId: role,
+          output: {
+            ...agentOutput(role),
+            data: {
+              report: {
+                schemaVersion: "critic-report.v1",
+                criticId: "critic-test",
+                findings: [],
+              },
+            },
+          },
+        };
+      }
       if (options.transientScout && role === "scout") {
         scoutAttempts += 1;
         if (scoutAttempts === 1) throw new Error("transient timeout");
@@ -87,6 +102,17 @@ function createActivities(options: MockOptions = {}) {
     runChecks: async () => {
       calls.push("deterministic_checks");
       return checks.shift() ?? { passed: true, output: "ok" };
+    },
+    runFitnessAssessment: async () => {
+      calls.push("maintainability_assess");
+      return {
+        outcome: "pass",
+        policyVersion: "test",
+        shadowMode: true,
+        findings: [],
+        rawSubScores: [],
+        missingCapabilities: [],
+      };
     },
     runBehavioralVerification: async () => {
       calls.push("behavioral_verify");
@@ -171,6 +197,7 @@ describe("factory workflow topology", () => {
       "implement",
       "deterministic_checks",
       "repair",
+      "maintainability_assess",
       "behavioral_verify",
       "review",
       "build_artifact",

@@ -5,7 +5,7 @@ import { FailureEnvelopeSchema, type FailureEnvelope } from "./failures.js";
 
 export const FACTORY_NODE_NAMES = [
   "prepare_repository", "create_worktree", "security_scan", "scout", "plan", "implement",
-  "deterministic_checks", "repair", "behavioral_verify", "review", "build_artifact", "deploy", "health_check",
+  "deterministic_checks", "repair", "maintainability_assess", "behavioral_verify", "review", "build_artifact", "deploy", "health_check",
 ] as const;
 export const FactoryNodeNameSchema = Type.Union(FACTORY_NODE_NAMES.map((name) => Type.Literal(name)) as TSchema[]);
 export type FactoryNodeName = (typeof FACTORY_NODE_NAMES)[number];

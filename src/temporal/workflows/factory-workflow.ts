@@ -10,8 +10,12 @@ import type * as activities from "../activities/types.js";
 import type { AgentActivityResult } from "../activities/types.js";
 import type { FactoryNodeName } from "../../contracts/nodes.js";
 import { DEFAULT_WORKFLOW_BUDGET } from "../../policy/retry-policy.js";
+import { assessMaintainability, DEFAULT_MAINTAINABILITY_POLICY } from "../../assurance/maintainability/policy.js";
+import { assessCriticReports, stripImplementerNarrative } from "../../assurance/maintainability/critic.js";
+import type { FitnessRunResult } from "../../assurance/fitness/types.js";
 import { TASK_QUEUES } from "../task-queues.js";
 import { runRepairLoop } from "./repair-loop.js";
+import { runMaintainabilityLoop } from "./maintainability-loop.js";
 import { runNodeAttempt, runNodeWithRetry } from "./run-node.js";
 import {
   FACTORY_NODE_NAMES,
@@ -250,6 +254,85 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     if (repairLoop.abstained) return await abstain("deterministic_checks", worktree.path);
     if (!repairLoop.passed) return await failRun("deterministic_checks", worktree.path);
     if (repairLoop.repairOutput) previous = repairLoop.repairOutput.data;
+    checkCancelled();
+    await maybeContinueAsNew(worktree, previous);
+
+    state.currentNode = "maintainability_assess";
+    const maintainabilityLoop = await runMaintainabilityLoop({
+      runId: input.runId,
+      budget: state.budget,
+      policy: DEFAULT_MAINTAINABILITY_POLICY,
+      assess: async (evidenceCollectionRounds) => {
+        const fitnessResult = await buildActivity.runFitnessAssessment({ run: input, worktree: worktree! });
+        const fitness: FitnessRunResult = {
+          outcome: fitnessResult.outcome,
+          policyVersion: fitnessResult.policyVersion,
+          shadowMode: fitnessResult.shadowMode,
+          findings: fitnessResult.findings,
+          rawSubScores: fitnessResult.rawSubScores,
+          missingCapabilities: fitnessResult.missingCapabilities,
+        };
+        const criticEvidence = stripImplementerNarrative({
+          workOrderId: input.taskId,
+          acceptanceIds: [input.taskId],
+          blueprintRefs: [`blueprint://${input.workflow}`],
+          fitnessFindingRefs: fitness.findings.flatMap((finding) => finding.evidenceRefs),
+          diffRefs: [`diff://${input.runId}`],
+          graphRefs: [`graph://${input.runId}`],
+          behavioralEvidenceRefs: [`scenario://${input.runId}`],
+        });
+        const requiredCritics = 1;
+        const criticReports: unknown[] = [];
+        if (requiredCritics > 0) {
+          const critic = await agentActivity.runAgent({
+            run: input,
+            worktree: worktree!,
+            role: "maintainability_critic",
+            input: { evidence: criticEvidence, previous },
+          });
+          if (!agentSucceeded(critic.output)) {
+            const failedOutput = critic.output;
+            const error = new Error(`maintainability critic ${failedOutput.status}: ${failedOutput.summary}`);
+            error.name = failedOutput.status === "abstained" ? "BudgetExhausted" : "PolicyViolation";
+            throw error;
+          }
+          criticReports.push(critic.output.data.report);
+        }
+        const criticAssessment = assessCriticReports({
+          requiredCritics,
+          evidence: criticEvidence,
+          reports: criticReports,
+        });
+        return assessMaintainability({
+          policy: DEFAULT_MAINTAINABILITY_POLICY,
+          fitness,
+          critic: criticAssessment,
+          evidenceCollectionRounds,
+        });
+      },
+      runBehaviorChecks: () => buildActivity.runChecks({ run: input, worktree: worktree! }),
+      runRefactor: async (scope, attempt) => {
+        const repair = await agentActivity.runAgent({
+          run: input,
+          worktree: worktree!,
+          role: "repair",
+          input: { mode: "maintainability_refactor", scope, attempt, previous },
+        });
+        if (!agentSucceeded(repair.output)) {
+          const failedOutput = repair.output;
+          const error = new Error(`maintainability repair ${failedOutput.status}: ${failedOutput.summary}`);
+          error.name = failedOutput.status === "abstained" ? "BudgetExhausted" : "PolicyViolation";
+          throw error;
+        }
+        return repair.output;
+      },
+    });
+    state.budget = maintainabilityLoop.budget;
+    recordAttempts(maintainabilityLoop.assessAttempts);
+    recordAttempts(maintainabilityLoop.refactorAttempts);
+    recordAttempts(maintainabilityLoop.behaviorAttempts);
+    if (maintainabilityLoop.abstained) return await abstain("maintainability_assess", worktree.path);
+    if (maintainabilityLoop.failed) return await failRun("maintainability_assess", worktree.path);
     checkCancelled();
     await maybeContinueAsNew(worktree, previous);
 

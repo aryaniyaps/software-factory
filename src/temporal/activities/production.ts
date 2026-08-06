@@ -58,6 +58,14 @@ export function createProductionActivities(dependencies: ProductionActivityDepen
         await dependencies.workspace.destroy(workspace.id);
       }
     },
+    runFitnessAssessment: async () => ({
+      outcome: "pass",
+      policyVersion: "test",
+      shadowMode: true,
+      findings: [],
+      rawSubScores: [],
+      missingCapabilities: [],
+    }),
     buildArtifact: dependencies.buildArtifact,
     deploy: dependencies.deploy,
     runBehavioralVerification: async () => {
