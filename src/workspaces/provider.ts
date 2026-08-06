@@ -1,6 +1,9 @@
+import type { FactorySandboxRole } from "../security/capability-policy.js";
+
 export interface WorkspaceSpec {
   path: string;
-  network: "none" | "restricted";
+  network?: "none" | "restricted";
+  role?: FactorySandboxRole;
   privileged?: boolean;
 }
 

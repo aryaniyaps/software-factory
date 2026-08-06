@@ -20,6 +20,7 @@ import { securityGate } from "../gates/security-gate.js";
 import { createRepositoryActivities } from "./activities/repository.js";
 import { createCrabboxActivityRuntime } from "./activities/crabbox.js";
 import { createAgentActivities } from "./activities/agent.js";
+import { createProductionArtifactBuilder } from "../security/production-builder.js";
 import { createBuildActivities } from "./activities/build.js";
 import { createDeployActivities, type DeploymentTarget } from "./activities/deploy.js";
 import type { FactoryWorkflowInput } from "./client.js";
@@ -87,18 +88,15 @@ export async function startWorkers(): Promise<void> {
       },
     },
   });
+  const image = process.env.FACTORY_IMAGE;
+  if (!image) throw new Error("FACTORY_IMAGE is required");
   const build = createBuildActivities({
     runtime: crabbox,
-    builder: {
-      async build(vm, input) {
-        const image = process.env.FACTORY_IMAGE;
-        const digest = process.env.FACTORY_ARTIFACT_DIGEST;
-        if (!image || !digest) throw new Error("FACTORY_IMAGE and FACTORY_ARTIFACT_DIGEST are required");
-        const result = await vm.exec("buildctl-daemonless.sh", ["build", "--frontend", "dockerfile.v0", "--local", "context=/work/crabbox", "--local", "dockerfile=/work/crabbox", "--output", `type=image,name=${image},push=true`], { timeoutMs: 60 * 60_000 });
-        if (result.exitCode !== 0) throw new Error(`isolated build failed: ${result.stderr}`);
-        return { image, digest };
-      },
-    },
+    builder: createProductionArtifactBuilder({
+      image,
+      signingKey: process.env.FACTORY_PROVENANCE_SIGNING_KEY ?? "factory-dev-signing-key",
+    }),
+    configuredDigest: process.env.FACTORY_ARTIFACT_DIGEST,
   });
   const deploy = createDeployActivities({
     targets: { [process.env.FACTORY_DEPLOYMENT_PROFILE ?? "staging"]: deploymentTargetFromEnv() },

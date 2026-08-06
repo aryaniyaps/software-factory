@@ -1,3 +1,4 @@
+import { assertWorkspaceMatchesPolicy } from "../security/capability-policy.js";
 import { officialCrabboxRuntime, type CrabboxLease, type CrabboxRuntime } from "./crabbox-runtime.js";
 import type { ExecOptions, ExecResult, WorkspaceProvider, WorkspaceSpec } from "./provider.js";
 
@@ -7,6 +8,7 @@ export class CrabboxWorkspaceProvider implements WorkspaceProvider {
   constructor(private readonly runtime: CrabboxRuntime = officialCrabboxRuntime) {}
 
   async create(spec: WorkspaceSpec): Promise<{ id: string }> {
+    assertWorkspaceMatchesPolicy(spec);
     if (spec.privileged) throw new Error("privileged workspaces are not allowed");
     const lease = await this.runtime.warm(spec);
     this.leases.set(lease.id, lease);
