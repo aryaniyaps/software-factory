@@ -1,0 +1,5 @@
+id: PRB-CONTRACT-PARSERS
+title: Typed contract parsers reject unknown fields
+requirements:
+  - REQ-EVIDENCE-SPINE
+  - REQ-PRODUCT-GRAPH

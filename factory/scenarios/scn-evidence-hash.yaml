@@ -1,0 +1,4 @@
+id: SCN-EVIDENCE-HASH
+title: Evidence manifest hash changes on mutation
+acceptance:
+  - AC-EVIDENCE-HASHING

@@ -1,0 +1,4 @@
+id: SCN-PRODUCT-GRAPH-COVERAGE
+title: Product graph coverage analyzer enforces scenario evidence
+acceptance:
+  - AC-SCENARIO-COVERAGE
