@@ -4,7 +4,8 @@ import { createContext7Tool } from "./tools.js";
 import { Context7Client } from "../integrations/research.js";
 import { join } from "node:path";
 import { createGondolinSession } from "./gondolin-session.js";
-import { profileForRole } from "./role-profiles.js";
+import { profileForRole, ROLE_PROMPT_HINTS } from "./role-profiles.js";
+import { parseCriticReport } from "../assurance/maintainability/findings.js";
 import { withSpan } from "../telemetry/bootstrap.js";
 import { recordToolCall } from "../telemetry/metrics.js";
 
@@ -31,14 +32,18 @@ export class PiAgentRunner implements AgentRunner {
     session.subscribe((event) => {
       if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") text += event.assistantMessageEvent.delta;
     });
+    const roleHint = ROLE_PROMPT_HINTS[input.role] ?? "";
+    const prompt = roleHint
+      ? `${roleHint}\n\n${input.prompt}\nCorrelation metadata: ${JSON.stringify(input.metadata)}`
+      : `${input.prompt}\nCorrelation metadata: ${JSON.stringify(input.metadata)}`;
     await withSpan("factory.agent.turn", {
       "factory.agent.role": input.role,
       ...Object.fromEntries(Object.entries(input.metadata).map(([key, value]) => [`factory.${key}`, value])),
     }, async () => {
-      await session.prompt(`${input.prompt}\nCorrelation metadata: ${JSON.stringify(input.metadata)}`);
+      await session.prompt(prompt);
     });
     close();
-    return { text, sessionId: session.sessionId };
+    return { text: normalizeAgentText(input.role, text), sessionId: session.sessionId };
   }
 }
 
@@ -52,4 +57,15 @@ function instrumentTool<T extends { name: string; execute: (...args: any[]) => P
     return original(...args);
   });
   return tool;
+}
+
+function normalizeAgentText(role: string, text: string): string {
+  if (role !== "maintainability_critic") return text;
+  try {
+    const parsed = JSON.parse(text) as { data?: { report?: unknown } };
+    if (parsed.data?.report) parseCriticReport(parsed.data.report);
+  } catch {
+    return text;
+  }
+  return text;
 }
