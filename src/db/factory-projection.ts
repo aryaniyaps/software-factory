@@ -1,5 +1,6 @@
-import type { EvidenceKind } from "../contracts/evidence.js";
+import type { EvidenceKind, EvidenceRef } from "../contracts/evidence.js";
 import type { EvidenceManifest } from "../evidence/manifest.js";
+import type { FeedbackTraceability } from "../feedback/types.js";
 
 export interface Queryable {
   query(text: string, values?: unknown[]): Promise<{ rows: unknown[] }>;
@@ -65,6 +66,17 @@ export interface FactoryProjection {
   listEvidenceItemIds(runId: string): Promise<string[]>;
   listGateDecisionKeys(runId: string): Promise<string[]>;
   listScenarioRunKeys(runId: string): Promise<string[]>;
+  recordFeedbackItem(input: { runId: string; feedbackId: string; source: string; summary: string }): Promise<{ inserted: boolean }>;
+  recordIncidentLink(input: { runId: string; incidentId: string; source: string }): Promise<{ inserted: boolean }>;
+  recordOracleCalibration(input: {
+    runId: string;
+    oracleId: string;
+    calibrationId: string;
+    score: number;
+    reportUri?: string;
+    reportSha256?: string;
+  }): Promise<void>;
+  getFeedbackTraceability(feedbackId: string): Promise<FeedbackTraceability | null>;
   getRun(runId: string): Promise<FactoryRunRow | null>;
 }
 
@@ -240,6 +252,99 @@ export function createFactoryProjection(db: Queryable): FactoryProjection {
         const entry = row as { scenario_id: string; attempt_id: string };
         return `${entry.scenario_id}@${entry.attempt_id}`;
       });
+    },
+
+    async recordFeedbackItem(input) {
+      const result = await db.query(
+        `INSERT INTO feedback_items (run_id, feedback_id, source, summary)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (run_id, feedback_id) DO NOTHING
+        RETURNING feedback_id`,
+        [input.runId, input.feedbackId, input.source, input.summary],
+      );
+      return { inserted: result.rows.length > 0 };
+    },
+
+    async recordIncidentLink(input) {
+      const result = await db.query(
+        `INSERT INTO incident_links (run_id, incident_id, source)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (run_id, incident_id) DO NOTHING
+        RETURNING incident_id`,
+        [input.runId, input.incidentId, input.source],
+      );
+      return { inserted: result.rows.length > 0 };
+    },
+
+    async recordOracleCalibration(input) {
+      await db.query(
+        `INSERT INTO oracle_calibrations (run_id, oracle_id, calibration_id, score, report_uri, report_sha256)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (run_id, oracle_id, calibration_id) DO NOTHING`,
+        [
+          input.runId,
+          input.oracleId,
+          input.calibrationId,
+          input.score,
+          input.reportUri ?? null,
+          input.reportSha256 ?? null,
+        ],
+      );
+    },
+
+    async getFeedbackTraceability(feedbackId) {
+      const feedback = await db.query(
+        `SELECT f.run_id, f.feedback_id, f.source
+        FROM feedback_items f
+        WHERE f.feedback_id = $1
+        LIMIT 1`,
+        [feedbackId],
+      );
+      const row = feedback.rows[0] as { run_id: string; feedback_id: string; source: string } | undefined;
+      if (!row) return null;
+
+      const incident = await db.query(
+        `SELECT incident_id FROM incident_links WHERE run_id = $1 ORDER BY linked_at DESC LIMIT 1`,
+        [row.run_id],
+      );
+      const artifact = await db.query(
+        `SELECT digest FROM factory_artifacts WHERE run_id = $1 ORDER BY digest LIMIT 1`,
+        [row.run_id],
+      );
+      const deployment = await db.query(
+        `SELECT digest FROM factory_deployments WHERE run_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+        [row.run_id],
+      );
+      const evidence = await db.query(
+        `SELECT id, sha256, uri FROM evidence_items
+        WHERE run_id = $1 AND kind = 'incident'
+        ORDER BY created_at`,
+        [row.run_id],
+      );
+
+      const incidentId = (incident.rows[0] as { incident_id: string } | undefined)?.incident_id;
+      const artifactDigest = (artifact.rows[0] as { digest: string } | undefined)?.digest
+        ?? (deployment.rows[0] as { digest: string } | undefined)?.digest;
+      if (!incidentId || !artifactDigest) return null;
+
+      const evidenceRefs: EvidenceRef[] = evidence.rows.map((entry) => {
+        const item = entry as { id: string; sha256: string; uri: string };
+        return {
+          schemaVersion: "evidence-ref.v1",
+          id: item.id,
+          sha256: item.sha256,
+          uri: item.uri,
+        };
+      });
+
+      return {
+        feedbackId: row.feedback_id,
+        incidentId,
+        deploymentId: `${row.run_id}-${artifactDigest}`,
+        artifactDigest,
+        runId: row.run_id,
+        evidenceRefs,
+      };
     },
 
     async getRun(runId) {
