@@ -1,0 +1,86 @@
+schemaVersion: fitness-policy.v1
+policyVersion: default-2026-08-06
+shadowMode:
+  enabled: true
+  successfulRunsRemaining: 30
+execution:
+  timeoutMs: 120000
+  maxOutputBytes: 1048576
+requiredCapabilities:
+  - architecture_rules
+  - modularity_graph
+  - type_surface
+  - lint_conventions
+  - dead_code
+  - clone_detection
+  - mutation_testing
+  - change_history
+hardRuleIds:
+  - dependency-cycle
+  - forbidden-dependency
+  - typescript-error
+shadowRuleIds:
+  - sentrux-aggregate
+  - sentrux-dimension
+  - eslint-complexity
+  - knip-unused
+  - jscpd-clone
+  - stryker-mutation
+  - git-hotspot
+adapters:
+  dependency-cruiser:
+    command: npx
+    args:
+      - depcruise
+      - --config
+      - .dependency-cruiser.cjs
+      - --output-type
+      - json
+      - src
+  sentrux:
+    command: sentrux
+    args:
+      - gate
+      - --json
+  typescript:
+    command: npx
+    args:
+      - tsc
+      - --noEmit
+      - --pretty
+      - false
+      - --extendedDiagnostics
+  eslint:
+    command: npx
+    args:
+      - eslint
+      - -f
+      - json
+      - src
+  knip:
+    command: npx
+    args:
+      - knip
+      - --reporter
+      - json
+  jscpd:
+    command: npx
+    args:
+      - jscpd
+      - --silent
+      - --reporters
+      - json
+      - src
+  stryker:
+    command: npx
+    args:
+      - stryker
+      - run
+      - --reporters
+      - json
+  git-history:
+    command: git
+    args:
+      - log
+      - --numstat
+      - --pretty=format:
