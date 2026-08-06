@@ -1,3 +1,5 @@
+import { assembleAgentMemory, type AgentMemoryRequest } from "../../agents/memory.js";
+
 export interface MemoryContextRequest {
   bank: string;
   role: string;
@@ -13,16 +15,14 @@ export interface MemoryContextReader {
 }
 
 export async function buildMemoryContext(reader: MemoryContextReader, request: MemoryContextRequest, maxChars = 12_000): Promise<string> {
-  const [recall, reflection, models] = await Promise.all([
-    reader.recallProject(request),
-    reader.reflectProject(request),
-    Promise.all(request.mentalModels.map((model) => reader.getMentalModel(request.bank, model, { tags: request.tags }))),
-  ]);
-  const sections = [
-    `Role: ${request.role}`,
-    `Recall:\n${JSON.stringify(recall)}`,
-    `Reflection:\n${reflection}`,
-    `Mental models:\n${JSON.stringify(models)}`,
-  ];
-  return sections.join("\n\n").slice(0, maxChars);
+  const adapter = {
+    recallProject: (input: { bank: string; query: string; tags: readonly string[] }) => reader.recallProject({ ...request, ...input }),
+    reflectProject: (input: { bank: string; query: string; tags: readonly string[] }) => reader.reflectProject({ ...request, ...input }),
+    getMentalModelForProject: (bank: string, modelId: string, tags: readonly string[]) => reader.getMentalModel(bank, modelId, { tags }),
+  };
+  const fullRequest: AgentMemoryRequest = {
+    ...request,
+    operations: ["recall", "reflect", "retain"],
+  };
+  return assembleAgentMemory(adapter, fullRequest, maxChars);
 }

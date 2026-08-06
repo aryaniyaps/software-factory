@@ -20,7 +20,7 @@ Koa owns HTTP parsing and lifecycle; it does not schedule Temporal work or execu
 
 ## Consequences
 
-- Capability review is a data change in `src/agents/role-profiles.ts`, not scattered conditional logic.
+- Capability review is a data change in `src/agents/role-profiles.ts` (skills, memory policy) and `src/agents/tool-policy.ts` (Pi tool allowlists), not scattered conditional logic.
 - Adding a skill or package requires a manifest and filesystem verification.
 - Hindsight context is richer and reusable across repositories without mixing run-specific memories.
 - Role sessions are slightly more expensive because loaders and memory packets are not shared.

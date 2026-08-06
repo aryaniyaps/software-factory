@@ -11,7 +11,11 @@ import {
   factoryWorkflow,
   rerunNodeSignal,
 } from "../../src/temporal/workflows/factory-workflow.js";
-import { FACTORY_NODE_NAMES } from "../../src/temporal/workflows/types.js";
+import { DEFAULT_WORKFLOW_BUDGET } from "../../src/policy/retry-policy.js";
+import {
+  FACTORY_NODE_NAMES,
+  type FactoryWorkflowContinuationInput,
+} from "../../src/temporal/workflows/types.js";
 import { TASK_QUEUES } from "../../src/temporal/task-queues.js";
 
 const workflowsPath = join(fileURLToPath(new URL(".", import.meta.url)), "../../src/temporal/workflows");
@@ -44,6 +48,12 @@ type MockOptions = {
   reviewStatus?: AgentOutput["status"];
   transientScout?: boolean;
   exhaustedBudget?: boolean;
+  maintainabilityRepairable?: boolean;
+};
+
+type AgentInvocation = {
+  role: string;
+  input: unknown;
 };
 
 function createReleaseActivities(calls: string[], previousDigest: string) {
@@ -97,7 +107,9 @@ function createReleaseActivities(calls: string[], previousDigest: string) {
 
 function createActivities(options: MockOptions = {}) {
   const calls: string[] = [];
+  const agentInvocations: AgentInvocation[] = [];
   let scoutAttempts = 0;
+  let criticCalls = 0;
   const checks = [...(options.checks ?? [{ passed: true, output: "ok" }])];
   const release = createReleaseActivities(calls, `registry/app@sha256:${"b".repeat(64)}`);
 
@@ -120,12 +132,27 @@ function createActivities(options: MockOptions = {}) {
         findings: options.securityPassed === false ? [".env"] : [],
       };
     },
-    runAgent: async ({ role }: { role: string }) => {
+    runAgent: async ({ role, input }: { role: string; input?: unknown }) => {
       calls.push(`agent:${role}`);
+      agentInvocations.push({ role, input });
       if (options.exhaustedBudget) {
         return { sessionId: role, output: agentOutput(role, "abstained") };
       }
       if (role === "maintainability_critic") {
+        criticCalls += 1;
+        const blockingFinding = {
+          id: "finding-1",
+          category: "forbidden_direction",
+          severity: "block",
+          confidence: 0.9,
+          dimension: "modularity",
+          affectedSymbols: ["src/billing/invoice.ts::InvoiceService"],
+          evidenceRefs: ["ev-1"],
+          violatedInvariant: "billing boundary",
+          minimumRepair: "use BillingPort",
+          falsificationCondition: "imports only allowed ports",
+          explanation: "forbidden import",
+        };
         return {
           sessionId: role,
           output: {
@@ -134,7 +161,7 @@ function createActivities(options: MockOptions = {}) {
               report: {
                 schemaVersion: "critic-report.v1",
                 criticId: "critic-test",
-                findings: [],
+                findings: options.maintainabilityRepairable && criticCalls === 1 ? [blockingFinding] : [],
               },
             },
           },
@@ -190,27 +217,67 @@ function createActivities(options: MockOptions = {}) {
     },
   };
 
-  return { activities, calls };
+  return { activities, calls, agentInvocations };
 }
 
-async function runFactoryTest(options: MockOptions = {}, runOptions?: { signal?: "cancel" | "rerun" }) {
+function queueScopedActivities(fullActivities: ReturnType<typeof createActivities>["activities"]) {
+  return {
+    [TASK_QUEUES.control]: {
+      prepareRepository: fullActivities.prepareRepository,
+      createWorktree: fullActivities.createWorktree,
+      removeWorktree: fullActivities.removeWorktree,
+      securityScan: fullActivities.securityScan,
+      updateTaskStatus: fullActivities.updateTaskStatus,
+    },
+    [TASK_QUEUES.agent]: {
+      runAgent: fullActivities.runAgent,
+    },
+    [TASK_QUEUES.build]: {
+      runChecks: fullActivities.runChecks,
+      runFitnessAssessment: fullActivities.runFitnessAssessment,
+      buildArtifact: fullActivities.buildArtifact,
+    },
+    [TASK_QUEUES.verifier]: {
+      runBehavioralVerification: fullActivities.runBehavioralVerification,
+    },
+    [TASK_QUEUES.deploy]: {
+      deployPreview: fullActivities.deployPreview,
+      verifyRelease: fullActivities.verifyRelease,
+      deployCanary: fullActivities.deployCanary,
+      observeDeployment: fullActivities.observeDeployment,
+      rollbackDeployment: fullActivities.rollbackDeployment,
+      getDeploymentTarget: fullActivities.getDeploymentTarget,
+      deploy: fullActivities.deploy,
+      healthCheck: fullActivities.healthCheck,
+    },
+  };
+}
+
+async function runFactoryTest(
+  options: MockOptions = {},
+  runOptions?: { signal?: "cancel" | "rerun"; continuation?: FactoryWorkflowContinuationInput["continuation"]; queueScoped?: boolean },
+) {
   const testEnv = await TestWorkflowEnvironment.createTimeSkipping();
-  const { activities, calls } = createActivities(options);
+  const { activities, calls, agentInvocations } = createActivities(options);
+  const scoped = queueScopedActivities(activities);
   const workers = await Promise.all(Object.values(TASK_QUEUES).map((taskQueue) =>
     Worker.create({
       connection: testEnv.nativeConnection,
       taskQueue,
       workflowsPath,
-      activities,
+      activities: runOptions?.queueScoped ? scoped[taskQueue as keyof typeof scoped] : activities,
     }),
   ));
   const workerRuns = workers.map((worker) => worker.run());
 
   try {
+    const workflowInput: FactoryWorkflowContinuationInput = runOptions?.continuation
+      ? { ...baseInput, continuation: runOptions.continuation }
+      : baseInput;
     const handle = await testEnv.client.workflow.start(factoryWorkflow, {
       taskQueue: TASK_QUEUES.control,
       workflowId: `factory-${baseInput.runId}-${Math.random().toString(36).slice(2)}`,
-      args: [baseInput],
+      args: [workflowInput],
     });
     if (runOptions?.signal === "cancel") {
       await handle.signal(cancelFactorySignal);
@@ -219,9 +286,9 @@ async function runFactoryTest(options: MockOptions = {}, runOptions?: { signal?:
       await handle.signal(rerunNodeSignal, "scout");
     }
     const result = await handle.result();
-    return { result, calls, threw: false as const };
+    return { result, calls, agentInvocations, threw: false as const };
   } catch (error) {
-    return { error, calls, threw: true as const };
+    return { error, calls, agentInvocations, threw: true as const };
   } finally {
     await Promise.all(workers.map((worker) => worker.shutdown()));
     await Promise.allSettled(workerRuns);
@@ -340,5 +407,94 @@ describe.sequential("factory workflow policy execution", () => {
     expect(threw).toBe(false);
     expect(result!.status).toBe("succeeded");
     expect(result!.nodeAttempts.filter((attempt) => attempt.node === "scout").length).toBeGreaterThan(0);
+  }, temporalTimeoutMs);
+
+  it("executes stages in the explicit production order", async () => {
+    const { calls, threw } = await runFactoryTest();
+    expect(threw).toBe(false);
+    const stageMarkers = [
+      "prepare_repository",
+      "create_worktree",
+      "security_scan",
+      "agent:scout",
+      "agent:plan",
+      "agent:implement",
+      "deterministic_checks",
+      "maintainability_assess",
+      "agent:maintainability_critic",
+      "behavioral_verify",
+      "agent:review",
+      "build_artifact",
+      "preview_deploy",
+      "status:Done",
+    ];
+    let previousIndex = -1;
+    for (const marker of stageMarkers) {
+      const index = calls.indexOf(marker);
+      expect(index).toBeGreaterThan(previousIndex);
+      previousIndex = index;
+    }
+  }, temporalTimeoutMs);
+
+  it("uses the repair role for check repair without maintainability mode metadata", async () => {
+    const { agentInvocations, threw } = await runFactoryTest({
+      checks: [
+        { passed: false, output: "fail" },
+        { passed: true, output: "ok" },
+      ],
+    });
+    expect(threw).toBe(false);
+    const repairCalls = agentInvocations.filter((invocation) => invocation.role === "repair");
+    expect(repairCalls).toHaveLength(1);
+    expect(repairCalls[0].input).toEqual({ previous: expect.objectContaining({ role: "implement" }) });
+    expect((repairCalls[0].input as { mode?: string }).mode).toBeUndefined();
+  }, temporalTimeoutMs);
+
+  it("uses the repair role with maintainability_refactor mode during maintainability loop", async () => {
+    const { agentInvocations, threw } = await runFactoryTest({ maintainabilityRepairable: true });
+    expect(threw).toBe(false);
+    const maintainabilityRepairs = agentInvocations.filter(
+      (invocation) => invocation.role === "repair"
+        && (invocation.input as { mode?: string }).mode === "maintainability_refactor",
+    );
+    expect(maintainabilityRepairs).toHaveLength(1);
+    expect(maintainabilityRepairs[0].input).toMatchObject({
+      mode: "maintainability_refactor",
+      attempt: 1,
+      scope: expect.objectContaining({
+        mode: "maintainability_refactor",
+        findingIds: expect.any(Array),
+      }),
+    });
+  }, temporalTimeoutMs);
+
+  it("preserves continuation state and skips repository preparation", async () => {
+    const continuation = {
+      nodeAttempts: [
+        { node: "prepare_repository" as const, attemptId: "prepare_repository-1", status: "succeeded" as const },
+        { node: "create_worktree" as const, attemptId: "create_worktree-1", status: "succeeded" as const },
+        { node: "security_scan" as const, attemptId: "security_scan-1", status: "succeeded" as const },
+        { node: "scout" as const, attemptId: "scout-1", status: "succeeded" as const },
+        { node: "plan" as const, attemptId: "plan-1", status: "succeeded" as const },
+        { node: "implement" as const, attemptId: "implement-1", status: "succeeded" as const },
+      ],
+      budget: { ...DEFAULT_WORKFLOW_BUDGET, agentAttemptsUsed: 3, repairAttemptsUsed: 0 },
+      continuationGeneration: 2,
+      worktree: { path: "/worktrees/continued", branch: "factory/continued" },
+      agentOutput: { role: "implement", summary: "done" },
+    };
+    const { result, calls, threw } = await runFactoryTest({}, { continuation });
+    expect(threw).toBe(false);
+    expect(calls).not.toContain("prepare_repository");
+    expect(calls).not.toContain("create_worktree");
+    expect(result!.continuationGeneration).toBe(2);
+    expect(result!.budget?.agentAttemptsUsed).toBeGreaterThanOrEqual(3);
+    expect(calls.some((call) => call.startsWith("cleanup:/worktrees/continued"))).toBe(true);
+  }, temporalTimeoutMs);
+
+  it("succeeds when activities are registered only on their workflow queues", async () => {
+    const { result, threw } = await runFactoryTest({}, { queueScoped: true });
+    expect(threw).toBe(false);
+    expect(result!.status).toBe("succeeded");
   }, temporalTimeoutMs);
 });

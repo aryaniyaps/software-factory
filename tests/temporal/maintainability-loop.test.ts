@@ -203,4 +203,46 @@ describe("maintainability loop workflow", () => {
     expect(result.abstained).toBe(true);
     expect(result.refactorAttempts).toHaveLength(1);
   });
+
+  it("records maintainability refactor attempts on the shared repair node", async () => {
+    const refactorInputs: Array<{ scope: { mode: string }; attempt: number }> = [];
+    let assessCount = 0;
+    const result = await runMaintainabilityLoop({
+      runId: "run-6",
+      budget: { ...DEFAULT_WORKFLOW_BUDGET },
+      policy: DEFAULT_MAINTAINABILITY_POLICY,
+      assess: async () => {
+        assessCount += 1;
+        if (assessCount === 1) {
+          return {
+            outcome: "repairable",
+            report: passAssessment().report,
+            repairScope: {
+              mode: "maintainability_refactor",
+              findingIds: ["finding-1"],
+              affectedSymbols: ["src/core.ts::Core"],
+              allowedPaths: ["src/core.ts"],
+              minimumRepairs: ["reduce complexity"],
+              forbiddenActions: ["downgrade findings"],
+            },
+            reasons: [{ code: "CRITIC_BLOCK", message: "blocked" }],
+          };
+        }
+        return passAssessment();
+      },
+      runBehaviorChecks: async () => ({ passed: true, output: "ok" }),
+      runRefactor: async (scope, attempt) => {
+        refactorInputs.push({ scope, attempt });
+        return agentOutput(`refactor-${attempt}`);
+      },
+    });
+    expect(result.passed).toBe(true);
+    expect(result.refactorAttempts).toHaveLength(1);
+    expect(result.refactorAttempts[0].node).toBe("repair");
+    expect(result.refactorAttempts[0].attemptId).toContain("repair-1");
+    expect(refactorInputs[0]).toMatchObject({
+      scope: { mode: "maintainability_refactor" },
+      attempt: 1,
+    });
+  });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseAgentOutput } from "../../src/contracts/nodes.js";
 import { profileForRole } from "../../src/agents/role-profiles.js";
+import { toolsForRole } from "../../src/agents/tool-policy.js";
 import {
   CRITIC_FORBIDDEN_TOOLS,
   CRITIC_READONLY_TOOLS,
@@ -10,12 +11,11 @@ import { stripImplementerNarrative } from "../../src/assurance/maintainability/c
 
 describe("maintainability critic role isolation", () => {
   it("exposes read-only tools and forbids implementer write capabilities", () => {
-    const profile = profileForRole("maintainability_critic");
-    expect([...profile.tools]).toEqual(expect.arrayContaining([...CRITIC_READONLY_TOOLS]));
+    const tools = toolsForRole("maintainability_critic");
+    expect(tools).toEqual(expect.arrayContaining([...CRITIC_READONLY_TOOLS]));
     for (const tool of CRITIC_FORBIDDEN_TOOLS) {
-      expect(profile.tools).not.toContain(tool);
+      expect(tools).not.toContain(tool);
     }
-    expect(profile.webSearch).toBe(false);
     expect(maintainabilityCriticRole.id).toBe("maintainability_critic");
   });
 

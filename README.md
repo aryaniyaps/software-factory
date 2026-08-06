@@ -4,7 +4,21 @@ A production-only, graph-oriented software factory. Temporal is the workflow aut
 
 ## Run
 
-The API and worker are separate processes. Both require the services configured under `infra/compose`.
+Start local dependencies (PostgreSQL, Temporal, LiteLLM, Hindsight):
+
+```bash
+npm run compose:up
+```
+
+Optional profiles:
+
+```bash
+npm run compose:obs     # LGTM stack (Grafana on :3000, OTLP on :4318)
+npm run compose:worker  # run the Temporal worker inside Docker
+npm run compose:down
+```
+
+Then run the API and worker on the host:
 
 ```bash
 npm install
@@ -15,6 +29,14 @@ npm run worker    # Temporal workers, with FACTORY_WORKER_MODULE=dist/temporal/p
 ```
 
 The API requires PostgreSQL and Temporal. The worker additionally requires Crabbox, Hindsight, Pi resources, and deployment configuration. Startup fails rather than falling back to host-process or in-memory execution.
+
+| Service | URL |
+|---------|-----|
+| Factory PostgreSQL | `localhost:5432` |
+| Temporal gRPC | `localhost:7233` |
+| Temporal UI | http://localhost:8080 |
+| LiteLLM | http://localhost:4000 |
+| Hindsight | http://localhost:8888 |
 
 ## Execution flow
 
@@ -36,4 +58,4 @@ Pi sessions use immutable, role-specific resources inside Gondolin. Hindsight me
 
 ## Services
 
-Self-hosted service definitions live under `infra/compose`. Temporal remains the workflow authority; PostgreSQL is a projection/reporting store only.
+All local dependencies are defined in a single Compose file at [`infra/compose/docker-compose.yml`](infra/compose/docker-compose.yml). Temporal persistence uses a separate Postgres instance from the factory projection database. Optional observability services live in [`infra/observability/docker-compose.lgtm.yml`](infra/observability/docker-compose.lgtm.yml) and are included via the `observability` profile.

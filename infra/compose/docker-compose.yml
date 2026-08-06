@@ -1,3 +1,21 @@
+# Local development stack for Software Factory.
+#
+# Core services (default):
+#   docker compose -f infra/compose/docker-compose.yml up -d
+#   npm run compose:up
+#
+# With in-container worker:
+#   docker compose -f infra/compose/docker-compose.yml --profile worker up -d
+#
+# With LGTM observability:
+#   docker compose -f infra/compose/docker-compose.yml --profile observability up -d
+#   npm run compose:obs
+#
+# Factory processes export OTLP to http://127.0.0.1:4318 when observability is enabled.
+
+include:
+  - path: ../observability/docker-compose.lgtm.yml
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -6,7 +24,7 @@ services:
       POSTGRES_PASSWORD: factory
       POSTGRES_DB: factory
     ports: ["5432:5432"]
-    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    volumes: [postgres-data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U factory -d factory"]
       interval: 5s
@@ -28,16 +46,70 @@ services:
     image: ghcr.io/vectorize-io/hindsight:0.8.6
     ports: ["8888:8888", "9999:9999"]
     environment:
-      HINDSIGHT_API_WORKER_ID: factory-local
-    volumes: ["hindsight-data:/home/hindsight/.hindsight"]
+      HINDSIGHT_API_WORKER_ID: ${HINDSIGHT_API_WORKER_ID:-factory-local}
+    volumes: [hindsight-data:/home/hindsight/.hindsight]
+
+  temporal-postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    volumes: [temporal-postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal -d temporal"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  temporal:
+    image: temporalio/auto-setup:1.29.3
+    environment:
+      DB: postgresql
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+      POSTGRES_SEEDS: temporal-postgres
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development.yaml
+    ports: ["7233:7233"]
+    depends_on:
+      temporal-postgres:
+        condition: service_healthy
+
+  temporal-ui:
+    image: temporalio/ui:2.44.1
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    ports: ["8080:8080"]
+    depends_on:
+      temporal:
+        condition: service_started
+
+  factory-worker:
+    image: node:24-bookworm
+    profiles: [worker]
+    working_dir: /app
+    volumes:
+      - ../..:/app:ro
+    command: sh -lc "npm ci && npm run build && npm run worker"
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: default
+      FACTORY_WORKER_MODULE: /app/dist/temporal/production-worker.js
+      DATABASE_URL: postgres://factory:factory@postgres:5432/factory
+      HINDSIGHT_BASE_URL: http://hindsight:8888
+      LITELLM_BASE_URL: http://litellm:4000
+    depends_on:
+      temporal:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      hindsight:
+        condition: service_started
+      litellm:
+        condition: service_started
 
 volumes:
   postgres-data:
   hindsight-data:
-
-# Local LGTM observability profile:
-#   docker compose -f infra/compose/docker-compose.yml -f infra/observability/docker-compose.lgtm.yml up
-#
-# Factory services should export OTLP to http://127.0.0.1:4318 with:
-#   OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
-#   OTEL_SERVICE_NAME=software-factory
+  temporal-postgres-data:

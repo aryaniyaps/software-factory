@@ -17,6 +17,22 @@ export function projectBankId(organization: string, project: string): string {
   return value;
 }
 
+export function resolveProjectBank(
+  input: { organization?: string; project?: string; repository: string },
+  env: Record<string, string | undefined> = process.env,
+): string {
+  const organization = input.organization ?? env.FACTORY_ORGANIZATION ?? "default";
+  const project = input.project ?? env.FACTORY_PROJECT ?? input.repository;
+  return projectBankId(organization, project);
+}
+
+export function memoryBankFromEnv(env: Record<string, string | undefined> = process.env): string {
+  const organization = env.FACTORY_ORGANIZATION;
+  const project = env.FACTORY_PROJECT;
+  if (!organization || !project) throw new Error("FACTORY_ORGANIZATION and FACTORY_PROJECT are required");
+  return projectBankId(organization, project);
+}
+
 export function memoryTags(context: CorrelationContext): string[] {
   return [
     context.organization && `org:${normalize(context.organization)}`,
