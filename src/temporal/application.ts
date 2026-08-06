@@ -7,6 +7,7 @@ import type { TaskProvider } from "../tasks/task-provider.js";
 export function createProductionApplication(options: ProductionWorkerOptions & {
   taskProvider: TaskProvider;
   workflowClient: WorkflowClientLike;
+  close: () => Promise<void>;
 }) {
   const reconciler = new ProjectReconciler(options.taskProvider, new TemporalWorkflowStarter(options.workflowClient));
   return {
@@ -16,6 +17,8 @@ export function createProductionApplication(options: ProductionWorkerOptions & {
       const workers = await createProductionWorkers(options);
       await Promise.all(workers.map((worker) => worker.run()));
     },
-    close: async () => {},
+    close: async () => {
+      await options.close();
+    },
   };
 }

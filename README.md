@@ -1,37 +1,39 @@
 # Software Factory
 
-A code-defined, graph-oriented software factory. Temporal coordinates deterministic and Pi-backed workflow nodes across isolated Git worktrees and Crabbox leases.
+A production-only, graph-oriented software factory. Temporal is the workflow authority; PostgreSQL stores projections; Crabbox isolates repository, agent, test, and build execution.
 
-## Development
+## Run
 
-Repository tests, scans, and builds run through Crabbox local-container leases. Install the `crabbox` CLI and Docker or Podman on the worker host. Crabbox syncs the worktree into the lease; commands that intentionally modify files must explicitly copy those files back before the lease is stopped. The worker never runs arbitrary repository commands directly on the host.
+The API and worker are separate processes. Both require the services configured under `infra/compose`.
 
 ```bash
 npm install
-npm run test:run
+cp .env.example .env
 npm run build
+npm run dev       # API
+npm run worker    # Temporal workers, with FACTORY_WORKER_MODULE=dist/temporal/production-worker.js
 ```
 
-Copy `.env.example` to `.env` when running local services.
+The API requires PostgreSQL and Temporal. The worker additionally requires Crabbox, Hindsight, Pi resources, and deployment configuration. Startup fails rather than falling back to host-process or in-memory execution.
 
-## Agent platform
+## Execution flow
 
-The API is served by Koa. Pi resources are factory-owned and read-only inside Gondolin:
-
-```bash
-npm run bootstrap:pi-resources
+```text
+API / GitHub reconciliation
+  -> Temporal workflow
+  -> repository + worktree
+  -> security scan
+  -> scout -> plan -> implement
+  -> checks / bounded repair
+  -> review
+  -> immutable image build
+  -> digest-pinned deploy
+  -> health check / rollback
+  -> PostgreSQL projection
 ```
 
-The bootstrap installs the pinned Pi Web Access, Ponytail, Context Mode, and `@tintinweb/pi-subagents` packages and verifies the Matt Pocock engineering skills under `src/agents/skills/engineering`. Set `PI_RESOURCE_ROOT` to the mounted resource directory used by the worker.
-
-Inside a Pi session, use `Agent` to spawn a foreground or background subagent. Use `get_subagent_result` to collect background results and `steer_subagent` to redirect a running agent. Custom agent definitions can live under `.pi/agents/` when a project needs them.
-
-Each workflow role has an immutable capability profile in `src/agents/role-profiles.ts`. Scout, plan, implement, repair, and review sessions receive different skills, tools, web policy, and Hindsight mental models.
-
-Pi Web Access is configured by `infra/pi/web-search.json.example`; `provider: "all"` preserves provider-labelled results. Credentials are environment-only.
-
-Hindsight uses one bank per organization/project with repository/run/role/phase tags. Missions, directives, and mental models are defined in `infra/hindsight/factory-bank-template.json`. The worker recalls and reflects before each role and retains outcomes afterward.
+Pi sessions use immutable, role-specific resources inside Gondolin. Hindsight memory is scoped by organization/project and tagged by repository, run, role, and phase. Repository commands and builds run through Crabbox; the host process is never an execution fallback.
 
 ## Services
 
-Self-hosted service definitions live under `infra/compose`. Temporal remains the workflow authority; Postgres is a projection/reporting store only.
+Self-hosted service definitions live under `infra/compose`. Temporal remains the workflow authority; PostgreSQL is a projection/reporting store only.

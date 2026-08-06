@@ -10,7 +10,6 @@ class FakeApiStore implements ApiStore {
   }
   async getRun(id: string): Promise<unknown> { return this.runs.get(id) ?? null; }
   async cancelRun(id: string): Promise<void> { this.runs.delete(id); }
-  async retryNode(_id: string): Promise<void> {}
 }
 
 describe("factory API", () => {

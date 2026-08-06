@@ -16,9 +16,14 @@ export interface FactoryWorkflowInput {
   project?: string;
 }
 
+export interface WorkflowHandleLike {
+  signal(name: string, ...args: unknown[]): Promise<void>;
+}
+
 export interface WorkflowClientLike {
   workflow: {
     start(workflow: unknown, options: { workflowId: string; taskQueue: string; args: [FactoryWorkflowInput] }): Promise<unknown>;
+    getHandle?(workflowId: string): WorkflowHandleLike;
   };
 }
 

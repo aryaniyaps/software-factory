@@ -6,7 +6,6 @@ const store: ApiStore = {
   createTask: async () => "run-1",
   getRun: async (id) => id === "run-1" ? { id } : null,
   cancelRun: async () => {},
-  retryNode: async () => {},
 };
 
 describe("Koa API", () => {

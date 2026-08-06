@@ -10,10 +10,12 @@ export interface FactoryWorkflowState {
 export const FACTORY_NODE_NAMES = [
   "prepare_repository",
   "create_worktree",
+  "security_scan",
   "scout",
   "plan",
   "implement",
   "deterministic_checks",
+  "repair",
   "review",
   "build_artifact",
   "deploy",

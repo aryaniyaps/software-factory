@@ -27,16 +27,12 @@ const buildActivity = proxyActivities<typeof activities>({ ...activityOptions, t
 const deployActivity = proxyActivities<typeof activities>({ ...activityOptions, taskQueue: TASK_QUEUES.deploy });
 
 export const cancelFactorySignal = defineSignal("cancelFactory");
-export const retryFactoryNodeSignal = defineSignal<[string]>("retryFactoryNode");
 export const factoryStatusQuery = defineQuery<FactoryWorkflowState>("factoryStatus");
 
 export async function factoryWorkflow(input: FactoryWorkflowInput): Promise<FactoryWorkflowState> {
   const state: FactoryWorkflowState = { runId: input.runId, status: "running", completedNodes: [] };
   let cancelled = false;
-  let requestedRetry: string | undefined;
-
   setHandler(cancelFactorySignal, () => { cancelled = true; });
-  setHandler(retryFactoryNodeSignal, (node) => { requestedRetry = node; });
   setHandler(factoryStatusQuery, () => ({ ...state, completedNodes: [...state.completedNodes] }));
 
   const complete = (node: string) => state.completedNodes.push(node);
@@ -53,6 +49,10 @@ export async function factoryWorkflow(input: FactoryWorkflowInput): Promise<Fact
     checkCancelled();
     const worktree = await controlActivity.createWorktree({ ...input, preparation });
     complete("create_worktree");
+    checkCancelled();
+    const security = await controlActivity.securityScan({ run: input, worktree });
+    if (!security.passed) throw new Error(`security scan failed: ${security.findings.join(", ")}`);
+    complete("security_scan");
     checkCancelled();
 
     let previous: unknown = preparation;
@@ -78,15 +78,17 @@ export async function factoryWorkflow(input: FactoryWorkflowInput): Promise<Fact
     checkCancelled();
     const artifact = await buildActivity.buildArtifact({ run: input, worktree });
     complete("build_artifact");
-    await deployActivity.deploy({ run: input, artifact });
+    const deployment = await deployActivity.deploy({ run: input, artifact });
     complete("deploy");
+    const health = await deployActivity.healthCheck({ run: input, url: deployment.healthUrl, digest: artifact.digest });
+    if (!health.healthy) throw new Error(`health check failed: ${health.url}`);
     complete("health_check");
     await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "Done", runId: input.runId });
     state.status = "succeeded";
     return state;
   } catch (error) {
     state.status = cancelled ? "cancelled" : "failed";
-    state.failedNode = requestedRetry ?? FACTORY_NODE_NAMES[state.completedNodes.length];
+    state.failedNode = FACTORY_NODE_NAMES[state.completedNodes.length];
     await controlActivity.updateTaskStatus({ taskId: input.taskId, status: state.status, runId: input.runId });
     throw error;
   }

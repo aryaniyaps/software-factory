@@ -4,14 +4,13 @@ import Router from "@koa/router";
 import bodyParser from "koa-bodyparser";
 
 export interface ApiStore {
-  createTask(input: { repository: string; title: string; description: string; dependencies?: string[] }): Promise<string>;
+  createTask(input: { repository: string; title: string; description: string }): Promise<string>;
   getRun(id: string): Promise<unknown>;
   getEvents?(id: string): Promise<unknown[]>;
   cancelRun(id: string): Promise<void>;
-  retryNode(id: string): Promise<void>;
 }
 
-type TaskInput = Partial<{ repository: string; title: string; description: string; dependencies: string[] }>;
+type TaskInput = Partial<{ repository: string; title: string; description: string }>;
 
 export function createApiApp(store: ApiStore): Koa {
   const app = new Koa();
@@ -34,7 +33,7 @@ export function createApiApp(store: ApiStore): Koa {
       ctx.body = { error: "repository, title, and description are required" };
       return;
     }
-    const id = await store.createTask(input as { repository: string; title: string; description: string; dependencies?: string[] });
+    const id = await store.createTask(input as { repository: string; title: string; description: string });
     ctx.status = 201;
     ctx.body = { id };
   });
@@ -52,11 +51,6 @@ export function createApiApp(store: ApiStore): Koa {
   router.post("/runs/:id/cancel", async (ctx) => {
     await store.cancelRun(ctx.params.id);
     ctx.body = { status: "cancelled" };
-  });
-
-  router.post("/nodes/:id/retry", async (ctx) => {
-    await store.retryNode(ctx.params.id);
-    ctx.body = { status: "retrying" };
   });
 
   app.use(router.routes());

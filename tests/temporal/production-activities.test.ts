@@ -10,9 +10,10 @@ describe("production activities", () => {
       agentRunner: { run: async () => { calls.push("agent"); return { sessionId: "session", text: "{}" }; } },
       workspace: {
         create: async () => ({ id: "vm" }),
-        exec: async () => { calls.push("check"); return { exitCode: 0, stdout: "ok", stderr: "" }; },
+        exec: async (_id, command) => { calls.push(command); return { exitCode: 0, stdout: "src/index.ts\n", stderr: "" }; },
         destroy: async () => {},
       },
+      health: { wait: async () => { calls.push("health"); } },
       buildArtifact: async () => ({ image: "app", digest: "app@sha256:abc" }),
       deploy: async () => { calls.push("deploy"); return { deployed: true, healthUrl: "http://app" }; },
       updateTaskStatus: async () => {},
@@ -20,8 +21,10 @@ describe("production activities", () => {
     const input = { runId: "run", taskId: "task", repository: "org/app", baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "crabbox" };
     const worktree = await activities.createWorktree({ ...input, preparation: { repository: "org/app", revision: "abc" } });
     await activities.runAgent({ run: input, worktree, role: "implement", input: {} });
+    expect(await activities.securityScan({ run: input, worktree })).toEqual({ passed: true, findings: [] });
     await activities.runChecks({ run: input, worktree });
     await activities.deploy({ run: input, artifact: { image: "app", digest: "app@sha256:abc" } });
-    expect(calls).toEqual(["agent", "check", "deploy"]);
+    await activities.healthCheck({ run: input, url: "http://app", digest: "app@sha256:abc" });
+    expect(calls).toEqual(["agent", "git", "npm", "deploy", "health"]);
   });
 });

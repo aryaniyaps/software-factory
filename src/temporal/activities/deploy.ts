@@ -16,24 +16,31 @@ export interface DeployHealth {
 
 const digestPattern = /^.+@sha256:[a-f0-9]{64}$/;
 
-export function createDeployActivities(dependencies: { targets: Record<string, DeploymentTarget>; ssh: DeploySsh; health: DeployHealth }): { deploy(input: DeployInput): Promise<DeployResult> } {
+function run(host: string, image: string, ssh: DeploySsh): Promise<unknown> {
+  return ssh.run(host, ["docker", "pull", image])
+    .then((result) => { if (result.exitCode !== 0) throw new Error(`deployment command failed: docker pull ${image}`); return ssh.run(host, ["docker", "rm", "-f", "factory-app"]); })
+    .then((result) => { if (result.exitCode !== 0) throw new Error("deployment command failed: docker rm -f factory-app"); return ssh.run(host, ["docker", "run", "-d", "--name", "factory-app", image]); })
+    .then((result) => { if (result.exitCode !== 0) throw new Error(`deployment command failed: docker run ${image}`); });
+}
+
+export function createDeployActivities(dependencies: { targets: Record<string, DeploymentTarget>; ssh: DeploySsh; health: DeployHealth }): { deploy(input: DeployInput): Promise<DeployResult>; healthCheck(input: { run: DeployInput["run"]; url: string; digest: string }): Promise<{ healthy: boolean; url: string }> } {
   return {
     async deploy(input) {
       if (!digestPattern.test(input.artifact.digest)) throw new Error("immutable image digest required");
       const target = dependencies.targets[input.run.deploymentProfile];
       if (!target) throw new Error(`unknown deployment profile: ${input.run.deploymentProfile}`);
-      const run = (image: string) => dependencies.ssh.run(target.host, ["docker", "pull", image])
-        .then(() => dependencies.ssh.run(target.host, ["docker", "rm", "-f", "factory-app"]))
-        .then(() => dependencies.ssh.run(target.host, ["docker", "run", "-d", "--name", "factory-app", image]));
-
-      await run(input.artifact.digest);
+      await run(target.host, input.artifact.digest, dependencies.ssh);
+      return { deployed: true, healthUrl: target.healthUrl };
+    },
+    async healthCheck(input) {
+      const target = dependencies.targets[input.run.deploymentProfile];
+      if (!target) throw new Error(`unknown deployment profile: ${input.run.deploymentProfile}`);
       try {
-        await dependencies.health.wait(target.healthUrl, { attempts: 3, intervalMs: 500 });
-        return { deployed: true, healthUrl: target.healthUrl };
-      } catch (error) {
-        if (!target.previousDigest || !digestPattern.test(target.previousDigest)) throw error;
-        await run(target.previousDigest);
-        return { deployed: false, healthUrl: target.healthUrl };
+        await dependencies.health.wait(input.url, { attempts: 3, intervalMs: 500 });
+        return { healthy: true, url: input.url };
+      } catch {
+        if (target.previousDigest && digestPattern.test(target.previousDigest)) await run(target.host, target.previousDigest, dependencies.ssh);
+        return { healthy: false, url: input.url };
       }
     },
   };

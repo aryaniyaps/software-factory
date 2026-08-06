@@ -1,6 +1,7 @@
 import type { AgentRunner } from "../../agents/agent-node.js";
 import { toolsForRole } from "../../agents/tool-policy.js";
 import type { WorkspaceProvider } from "../../workspaces/provider.js";
+import { securityGate } from "../../gates/security-gate.js";
 import type { FactoryActivities } from "./types.js";
 
 export interface ProductionActivityDependencies {
@@ -8,6 +9,7 @@ export interface ProductionActivityDependencies {
   createWorktree: FactoryActivities["createWorktree"];
   agentRunner: AgentRunner;
   workspace: WorkspaceProvider;
+  health: { wait(url: string, options?: { attempts?: number; intervalMs?: number }): Promise<void> };
   buildArtifact: FactoryActivities["buildArtifact"];
   deploy: FactoryActivities["deploy"];
   updateTaskStatus: FactoryActivities["updateTaskStatus"];
@@ -17,6 +19,16 @@ export function createProductionActivities(dependencies: ProductionActivityDepen
   return {
     prepareRepository: dependencies.prepareRepository,
     createWorktree: dependencies.createWorktree,
+    securityScan: async (input) => {
+      const workspace = await dependencies.workspace.create({ path: input.worktree.path, network: "none" });
+      try {
+        const result = await dependencies.workspace.exec(workspace.id, "git", ["ls-files"], { cwd: "/workspace" });
+        if (result.exitCode !== 0) return { passed: false, findings: [result.stderr] };
+        return securityGate({ files: result.stdout.split("\\n").filter(Boolean) });
+      } finally {
+        await dependencies.workspace.destroy(workspace.id);
+      }
+    },
     runAgent: async (input) => {
       const result = await dependencies.agentRunner.run({
         role: input.role,
@@ -44,6 +56,14 @@ export function createProductionActivities(dependencies: ProductionActivityDepen
     },
     buildArtifact: dependencies.buildArtifact,
     deploy: dependencies.deploy,
+    healthCheck: async ({ url }) => {
+      try {
+        await dependencies.health.wait(url, { attempts: 3, intervalMs: 500 });
+        return { healthy: true, url };
+      } catch {
+        return { healthy: false, url };
+      }
+    },
     updateTaskStatus: dependencies.updateTaskStatus,
   };
 }

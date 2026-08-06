@@ -16,6 +16,7 @@ import { assertCrabboxAvailable } from "../workspaces/crabbox-doctor.js";
 import { GitWorktreeManager } from "../workspaces/worktree-manager.js";
 import { SshExecutor } from "../deploy/ssh-executor.js";
 import { HealthChecker } from "../deploy/health-checker.js";
+import { securityGate } from "../gates/security-gate.js";
 import { createRepositoryActivities } from "./activities/repository.js";
 import { createCrabboxActivityRuntime } from "./activities/crabbox.js";
 import { createAgentActivities } from "./activities/agent.js";
@@ -104,6 +105,7 @@ export async function startWorkers(): Promise<void> {
     ssh: new SshExecutor({ hosts: [process.env.FACTORY_DEPLOY_HOST ?? ""] }),
     health: new HealthChecker(),
   });
+  const health = new HealthChecker();
   const pool = createPool();
   const projection = createFactoryProjection(pool);
   const activities = {
@@ -111,6 +113,25 @@ export async function startWorkers(): Promise<void> {
     ...agent,
     ...build,
     ...deploy,
+    async securityScan(input: { worktree: { path: string } }) {
+      const lease = await workspace.create({ path: input.worktree.path, network: "none" });
+      try {
+        const result = await workspace.exec(lease.id, "git", ["ls-files"], { cwd: "/workspace" });
+        return result.exitCode === 0
+          ? securityGate({ files: result.stdout.split("\\n").filter(Boolean) })
+          : { passed: false, findings: [result.stderr] };
+      } finally {
+        await workspace.destroy(lease.id);
+      }
+    },
+    async healthCheck(input: { url: string }) {
+      try {
+        await health.wait(input.url, { attempts: 3, intervalMs: 500 });
+        return { healthy: true, url: input.url };
+      } catch {
+        return { healthy: false, url: input.url };
+      }
+    },
     async updateTaskStatus(input: { taskId: string; status: string; runId: string }) {
       await projection.recordRun({ runId: input.runId, workflowId: `factory-${input.runId}`, taskId: input.taskId, status: input.status });
     },

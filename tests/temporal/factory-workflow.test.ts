@@ -6,10 +6,12 @@ describe("factory workflow topology", () => {
     expect(FACTORY_NODE_NAMES).toEqual([
       "prepare_repository",
       "create_worktree",
+      "security_scan",
       "scout",
       "plan",
       "implement",
       "deterministic_checks",
+      "repair",
       "review",
       "build_artifact",
       "deploy",

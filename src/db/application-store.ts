@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import type { ApiStore } from "../api/server.js";
-import { mvpWorkflow } from "../workflow/mvp-workflow.js";
+import { FACTORY_NODE_NAMES } from "../temporal/workflows/types.js";
 import { GraphRepository } from "./graph-repository.js";
 
 export class PostgresApplicationStore implements ApiStore {
@@ -10,7 +10,8 @@ export class PostgresApplicationStore implements ApiStore {
   async createTask(input: { repository: string; title: string; description: string }): Promise<string> {
     const id = randomUUID();
     await this.db.query("INSERT INTO runs (id, title) VALUES ($1, $2)", [id, input.title]);
-    const nodes = mvpWorkflow.nodes.map((node, index) => ({ id: `${id}-node-${index + 1}`, runId: id, kind: node.kind, name: node.name, input: { repository: input.repository, description: input.description } }));
+    const agentNodes = new Set(["scout", "plan", "implement", "repair", "review"]);
+    const nodes = FACTORY_NODE_NAMES.map((name, index) => ({ id: `${id}-node-${index + 1}`, runId: id, kind: agentNodes.has(name) ? "agent" as const : "deterministic" as const, name, input: { repository: input.repository, description: input.description } }));
     const repository = new GraphRepository(this.db);
     for (const node of nodes) await repository.createNode(node);
     for (let index = 0; index < nodes.length - 1; index++) await repository.createEdge(nodes[index].id, nodes[index + 1].id);
@@ -36,7 +37,4 @@ export class PostgresApplicationStore implements ApiStore {
     await this.db.query("UPDATE nodes SET status = 'cancelled', updated_at = now() WHERE run_id = $1 AND status IN ('pending', 'leased', 'running')", [id]);
   }
 
-  async retryNode(id: string): Promise<void> {
-    await this.db.query("UPDATE nodes SET status = 'pending', error = NULL, lease_owner = NULL, lease_expires_at = NULL, updated_at = now() WHERE id = $1", [id]);
-  }
 }
