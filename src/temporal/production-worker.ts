@@ -28,6 +28,7 @@ import { createProductionWorkers } from "./worker-main.js";
 import { instrumentActivities } from "../telemetry/bootstrap.js";
 import { createVerifierActivities } from "./activities/verifier-impl.js";
 import { createHealthActivities } from "./activities/health.js";
+import { createMetaFactoryActivities } from "./activities/meta-factory.js";
 
 const execFile = promisify(nodeExecFile);
 
@@ -112,6 +113,7 @@ export async function startWorkers(): Promise<void> {
   const hiddenScenariosRoot = process.env.FACTORY_HIDDEN_SCENARIOS_ROOT
     ?? join(process.cwd(), "factory/hidden-scenarios");
   const verifier = createVerifierActivities({ hiddenScenariosRoot });
+  const metaFactoryActivities = createMetaFactoryActivities();
   const healthActivities = createHealthActivities({
     enqueueWorkOrder: async (input) => {
       await projection.recordEvent({
@@ -152,6 +154,7 @@ export async function startWorkers(): Promise<void> {
     },
     runBehavioralVerification: verifier.runBehavioralVerification,
     ...healthActivities,
+    ...metaFactoryActivities,
   });
   const workflowsPath = fileURLToPath(new URL("./workflows", import.meta.url));
   await Promise.all((await createProductionWorkers({ workflowsPath, activities })).map((worker) => worker.run()));

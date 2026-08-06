@@ -236,6 +236,36 @@ export interface EnqueueDebtWorkOrderResult {
   workOrderId: string;
 }
 
+export interface RunMetaEvaluationInput {
+  runId: string;
+  corpusVersion: string;
+  corpusCases: readonly import("../../evaluation/corpus.js").CorpusRunRecord[];
+  baselineEvaluator: import("../../evaluation/replay.js").ReplayEvaluator;
+  candidateEvaluator: import("../../evaluation/replay.js").ReplayEvaluator;
+  changeId: string;
+  changeKind: import("../../evaluation/validity.js").FactoryChangeKind;
+  evaluatorId: string;
+  candidateEvaluatorId: string;
+  weatherObservations: readonly import("../../models/weather-report.js").ModelObservation[];
+  currentRoute?: import("../../models/router.js").ModelRoute;
+  candidateRoute?: import("../../models/router.js").ModelRoute;
+  shadowScore?: number;
+  canaryScore?: number;
+  canaryPercentage?: number;
+}
+
+export interface RunMetaEvaluationResult {
+  corpus: import("../../evaluation/corpus.js").CorpusVersion;
+  baseline: import("../../evaluation/replay.js").ReplaySummary;
+  candidate: import("../../evaluation/replay.js").ReplaySummary;
+  replayImproves: boolean;
+  gamingValid: boolean;
+  factoryPromotion: import("../../evaluation/validity.js").PromoteFactoryChangeDecision;
+  selectedRoute?: import("../../models/router.js").ModelRoute;
+  routePromotion?: import("../../models/router.js").PromoteModelRouteDecision;
+  rolledBackRoute?: import("../../models/router.js").ModelRoute;
+}
+
 export interface FactoryActivities {
   prepareRepository(input: FactoryWorkflowInput): Promise<RepositoryPreparation>;
   createWorktree(input: WorktreeInput): Promise<WorktreeResult>;
@@ -261,6 +291,7 @@ export interface FactoryActivities {
   runRepositoryHealthLoop(input: RunRepositoryHealthLoopInput): Promise<import("../../health/repository-health.js").RepositoryHealthLoopResult>;
   calibrateOracleThresholds(input: CalibrateOracleThresholdsInput): Promise<CalibrateOracleThresholdsResult>;
   enqueueDebtWorkOrder(input: EnqueueDebtWorkOrderInput): Promise<EnqueueDebtWorkOrderResult>;
+  runMetaEvaluation(input: RunMetaEvaluationInput): Promise<RunMetaEvaluationResult>;
 }
 
 export declare function prepareRepository(input: FactoryWorkflowInput): Promise<RepositoryPreparation>;
@@ -287,3 +318,4 @@ export declare function sampleNightlyProbes(input: SampleNightlyProbesInput): Pr
 export declare function runRepositoryHealthLoop(input: RunRepositoryHealthLoopInput): Promise<import("../../health/repository-health.js").RepositoryHealthLoopResult>;
 export declare function calibrateOracleThresholds(input: CalibrateOracleThresholdsInput): Promise<CalibrateOracleThresholdsResult>;
 export declare function enqueueDebtWorkOrder(input: EnqueueDebtWorkOrderInput): Promise<EnqueueDebtWorkOrderResult>;
+export declare function runMetaEvaluation(input: RunMetaEvaluationInput): Promise<RunMetaEvaluationResult>;

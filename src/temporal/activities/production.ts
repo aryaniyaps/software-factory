@@ -6,6 +6,7 @@ import { securityGate } from "../../gates/security-gate.js";
 import type { FactoryActivities } from "./types.js";
 import { parseAgentOutput } from "../../contracts/nodes.js";
 import { createHealthActivities } from "./health.js";
+import { createMetaFactoryActivities } from "./meta-factory.js";
 
 export interface ProductionActivityDependencies {
   prepareRepository: FactoryActivities["prepareRepository"];
@@ -21,6 +22,7 @@ export interface ProductionActivityDependencies {
 
 export function createProductionActivities(dependencies: ProductionActivityDependencies): FactoryActivities {
   const health = createHealthActivities();
+  const metaFactory = createMetaFactoryActivities();
   return {
     prepareRepository: dependencies.prepareRepository,
     createWorktree: dependencies.createWorktree,
@@ -101,5 +103,6 @@ export function createProductionActivities(dependencies: ProductionActivityDepen
     },
     updateTaskStatus: dependencies.updateTaskStatus,
     ...health,
+    runMetaEvaluation: metaFactory.runMetaEvaluation,
   };
 }
