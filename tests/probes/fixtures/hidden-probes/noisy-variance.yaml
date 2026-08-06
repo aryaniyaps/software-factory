@@ -1,0 +1,19 @@
+schemaVersion: probe.v1
+id: PRB-NOISY
+title: High variance probe
+requirement: Add retry-safe idempotency to the outbound webhook sender.
+difficulty: 6
+acceptance:
+  - AC-PROBE-NOISY
+adapter:
+  command: test
+  args:
+    - -f
+    - webhook.idempotent
+repeats: 4
+maxVariance: 0.01
+startingMarkers:
+  baseline:
+    - webhook.sender
+  candidate:
+    - webhook.sender

@@ -1,0 +1,18 @@
+schemaVersion: probe.v1
+id: PRB-ALREADY-DONE
+title: Already implemented capability
+requirement: Ensure the feature marker file exists for the requested capability.
+difficulty: 3
+acceptance:
+  - AC-PROBE-DONE
+adapter:
+  command: test
+  args:
+    - -f
+    - feature.marker
+repeats: 1
+startingMarkers:
+  baseline:
+    - feature.marker
+  candidate:
+    - feature.marker

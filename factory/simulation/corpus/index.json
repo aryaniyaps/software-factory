@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "simulation-corpus.v1",
+  "description": "Nightly dependency twin scenarios for deterministic fault replay.",
+  "entries": [
+    {
+      "id": "http-rate-limit",
+      "seed": "nightly-http-rate-limit",
+      "twinId": "http-api",
+      "version": "1.0.0",
+      "faults": ["rate_limit"]
+    },
+    {
+      "id": "webhook-replay",
+      "seed": "nightly-webhook-replay",
+      "twinId": "github-webhook",
+      "version": "1.0.0",
+      "faults": []
+    },
+    {
+      "id": "storage-partial-failure",
+      "seed": "nightly-storage-partial",
+      "twinId": "object-store",
+      "version": "1.0.0",
+      "faults": ["partial_failure"]
+    }
+  ]
+}

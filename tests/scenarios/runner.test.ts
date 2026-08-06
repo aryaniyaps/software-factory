@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { loadScenariosFromRoot } from "../../src/scenarios/loader.js";
 import { ScenarioRunner, createMockProcessRunner } from "../../src/scenarios/runner.js";
 import type { ProcessSpec } from "../../src/assurance/fitness/process-runner.js";
+import { createDefaultTwinRegistry } from "../../src/simulation/registry.js";
 
 async function createRevisionRoots(): Promise<{ baselineRoot: string; candidateRoot: string }> {
   const baselineRoot = await mkdtemp(join(tmpdir(), "sf-baseline-"));
@@ -81,6 +82,47 @@ describe("scenario runner", () => {
     expect(record.status).toBe("succeeded");
     expect(record.satisfied).toBe(true);
     expect(record.acceptanceEvidence["AC-STABLE-MARKER"]?.length).toBeGreaterThan(0);
+  });
+
+  it("attaches deterministic twin fixture evidence when a registry is configured", async () => {
+    const { baselineRoot, candidateRoot } = await createRevisionRoots();
+    const root = new URL("./fixtures/hidden-scenarios", import.meta.url).pathname;
+    const scenarios = await loadScenariosFromRoot(root, { hiddenRoot: root, role: "behavior_verifier" });
+    const refactor = scenarios.find((scenario) => scenario.id === "SCN-REFACTOR-CLI");
+    expect(refactor).toBeDefined();
+
+    const twinRegistry = createDefaultTwinRegistry("scenario-suite-seed");
+
+    const runner = new ScenarioRunner({
+      runner: createMockProcessRunner(async (spec: ProcessSpec) => {
+        const marker = spec.args?.[1] ?? "";
+        const exists = await fileExists(join(spec.cwd, marker));
+        return { exitCode: exists ? 0 : 1, stdout: "", stderr: "", timedOut: false, outputTruncated: false };
+      }),
+      twinRegistry,
+    });
+
+    const { suite } = await runner.runSuite({
+      runId: "run-twin",
+      attemptId: "attempt-twin",
+      baselineRoot,
+      candidateRoot,
+      scenarios: [refactor!],
+    });
+
+    const twinRefs = suite.evidenceRefs.filter((ref) => ref.startsWith("twin-fixture:"));
+    expect(twinRefs.length).toBe(3);
+    expect(new Set(twinRefs).size).toBe(3);
+
+    const rerun = await runner.runSuite({
+      runId: "run-twin-2",
+      attemptId: "attempt-twin-2",
+      baselineRoot,
+      candidateRoot,
+      scenarios: [refactor!],
+    });
+    const rerunTwinRefs = rerun.suite.evidenceRefs.filter((ref) => ref.startsWith("twin-fixture:")).sort();
+    expect(rerunTwinRefs).toEqual(twinRefs.sort());
   });
 });
 
