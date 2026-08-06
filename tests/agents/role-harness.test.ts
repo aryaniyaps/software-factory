@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  allToolNamesForHarness,
+  allToolsForRole,
+  canEscalateToHuman,
   harnessForRole,
   ROLE_HARNESS_SPECS,
-  canEscalateToHuman,
-} from "../../src/agents/role-harness-spec.js";
+} from "../../src/agents/role-harness.js";
 import { AgentRoles } from "../../src/contracts/nodes.js";
+import { McpSecurityGateway } from "../../src/agents/mcp-gateway.js";
 
 describe("RoleHarnessSpec", () => {
   it("defines a harness for every agent role", () => {
@@ -16,17 +17,14 @@ describe("RoleHarnessSpec", () => {
   });
 
   it("uses allowlist-only tool registration semantics", () => {
-    const scout = harnessForRole("scout");
-    expect(allToolNamesForHarness(scout)).toEqual([
-      "read", "grep", "find", "ls",
-      "context7_resolve_library_id", "context7_query_docs",
-      "web_search",
+    expect(allToolsForRole("scout")).toEqual([
+      "read", "grep", "find", "ls", "web_search", "resolve-library-id", "query-docs",
     ]);
-    expect(allToolNamesForHarness(harnessForRole("implement"))).not.toContain("web_search");
-    expect(allToolNamesForHarness(harnessForRole("review"))).toEqual(expect.arrayContaining([
+    expect(allToolsForRole("implement")).not.toContain("web_search");
+    expect(allToolsForRole("review")).toEqual(expect.arrayContaining([
       "get_evidence", "list_evidence_meta",
     ]));
-    expect(allToolNamesForHarness(harnessForRole("maintainability_critic"))).not.toContain("list_evidence_meta");
+    expect(allToolsForRole("maintainability_critic")).not.toContain("list_evidence_meta");
   });
 
   it("scopes factory-evidence MCP to review and critic", () => {
@@ -39,5 +37,11 @@ describe("RoleHarnessSpec", () => {
     expect(canEscalateToHuman("plan")).toBe(true);
     expect(canEscalateToHuman("repair")).toBe(true);
     expect(canEscalateToHuman("implement")).toBe(false);
+  });
+
+  it("denies tools outside the gateway allowlist", () => {
+    const gateway = new McpSecurityGateway({ allow: ["read", "get_evidence"] });
+    expect(gateway.isAllowed("read")).toBe(true);
+    expect(gateway.isAllowed("write")).toBe(false);
   });
 });

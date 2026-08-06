@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { profileForRole, roleLoaderOptions } from "../../src/agents/role-profiles.js";
+import { toolsForRole } from "../../src/agents/tool-policy.js";
 
 describe("Pi role profiles", () => {
   it("defines distinct capabilities for every workflow role", () => {
@@ -13,7 +14,7 @@ describe("Pi role profiles", () => {
     expect(() => profileForRole("unknown")).toThrow("unknown Pi role");
   });
 
-  it("constructs role-specific loader paths under the factory root", () => {
+  it("constructs role-specific loader paths under per-role agentDirs", () => {
     const options = roleLoaderOptions("review", "/factory/resources");
     expect(options.agentDir).toBe("/factory/resources/roles/review");
     expect(options.additionalSkillPaths).toEqual([]);

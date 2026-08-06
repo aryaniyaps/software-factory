@@ -20,11 +20,11 @@ describe("context packet assembler", () => {
     const packet = buildContextPacket({
       role: "repair",
       payload: { mode: "diagnostic" },
-      errors: [compactError({ message: "test failed", type: "check_failure", command: "npm test" })],
+      errors: [compactError(new Error("test failed"), { command: "npm test" })],
       evidenceRefs: ["ev-check-1", "ev-diff-2"],
     });
     expect(packet).toContain("<errors>");
-    expect(packet).toContain("check_failure");
+    expect(packet).toContain("test failed");
     expect(packet).toContain("<evidence_hints>");
     expect(packet).toContain("ev-check-1");
   });
