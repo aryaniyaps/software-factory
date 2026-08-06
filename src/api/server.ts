@@ -1,13 +1,17 @@
+import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import Koa from "koa";
 import Router from "@koa/router";
 import bodyParser from "koa-bodyparser";
+import type { FeedbackApiStore } from "./feedback-api.js";
+import { incidentInputFromBody, webhookInputFromBody } from "./feedback-api.js";
 
 export interface ApiStore {
   createTask(input: { repository: string; title: string; description: string }): Promise<string>;
   getRun(id: string): Promise<unknown>;
   getEvents?(id: string): Promise<unknown[]>;
   cancelRun(id: string): Promise<void>;
+  feedback?: FeedbackApiStore;
 }
 
 type TaskInput = Partial<{ repository: string; title: string; description: string }>;
@@ -51,6 +55,55 @@ export function createApiApp(store: ApiStore): Koa {
   router.post("/runs/:id/cancel", async (ctx) => {
     await store.cancelRun(ctx.params.id);
     ctx.body = { status: "cancelled" };
+  });
+
+  router.post("/feedback", async (ctx) => {
+    if (!store.feedback) {
+      ctx.status = 501;
+      ctx.body = { error: "feedback ingest not configured" };
+      return;
+    }
+    const deliveryId = (ctx.request.headers["x-delivery-id"] as string | undefined) ?? randomUUID();
+    const body = (ctx.request.body ?? {}) as Partial<{ externalId: string; summary: string; body: string; runId: string; incidentId: string; artifactDigest: string }>;
+    if (!body.summary || !body.body || !body.runId) {
+      ctx.status = 422;
+      ctx.body = { error: "summary, body, and runId are required" };
+      return;
+    }
+    const input = webhookInputFromBody(body as { summary: string; body: string; runId: string; externalId?: string; incidentId?: string; artifactDigest?: string }, deliveryId);
+    const result = await store.feedback.ingestFeedback(input);
+    ctx.status = result.inserted ? 201 : 200;
+    ctx.body = result;
+  });
+
+  router.post("/incidents", async (ctx) => {
+    if (!store.feedback) {
+      ctx.status = 501;
+      ctx.body = { error: "feedback ingest not configured" };
+      return;
+    }
+    const deliveryId = (ctx.request.headers["x-delivery-id"] as string | undefined) ?? randomUUID();
+    const body = (ctx.request.body ?? {}) as Partial<{ incidentId: string; summary: string; body: string; runId: string; artifactDigest: string; outcome: "rollback" | "resolved" | "open"; deliveryId: string }>;
+    if (!body.incidentId || !body.summary || !body.body || !body.runId) {
+      ctx.status = 422;
+      ctx.body = { error: "incidentId, summary, body, and runId are required" };
+      return;
+    }
+    const input = incidentInputFromBody(body as { incidentId: string; summary: string; body: string; runId: string; artifactDigest?: string; outcome?: "rollback" | "resolved" | "open"; deliveryId?: string }, deliveryId);
+    const result = await store.feedback.ingestFeedback(input);
+    ctx.status = result.inserted ? 201 : 200;
+    ctx.body = result;
+  });
+
+  router.get("/feedback/:id/trace", async (ctx) => {
+    if (!store.feedback) {
+      ctx.status = 501;
+      ctx.body = { error: "feedback ingest not configured" };
+      return;
+    }
+    const trace = await store.feedback.getFeedbackTrace(ctx.params.id);
+    ctx.status = trace ? 200 : 404;
+    ctx.body = trace ?? { error: "feedback not found" };
   });
 
   app.use(router.routes());
