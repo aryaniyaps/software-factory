@@ -5,6 +5,8 @@ import { Context7Client } from "../integrations/research.js";
 import { join } from "node:path";
 import { createGondolinSession } from "./gondolin-session.js";
 import { profileForRole } from "./role-profiles.js";
+import { withSpan } from "../telemetry/bootstrap.js";
+import { recordToolCall } from "../telemetry/metrics.js";
 
 export class PiAgentRunner implements AgentRunner {
   async run(input: { role: string; prompt: string; cwd: string; tools: string[]; metadata: Record<string, string> }): Promise<{ text: string; sessionId: string }> {
@@ -12,8 +14,7 @@ export class PiAgentRunner implements AgentRunner {
     const modelRuntime = await ModelRuntime.create({ modelsPath: process.env.PI_MODELS_PATH ?? join(input.cwd, "infra/pi/models.json") });
     const model = modelRuntime.getModel("litellm", "factory/default");
     const customTools = [
-      ...(profile.tools.includes("context7") ? [createContext7Tool(new Context7Client())] : []),
-
+      ...(profile.tools.includes("context7") ? [instrumentTool("context7", createContext7Tool(new Context7Client()))] : []),
     ];
     const { session, close } = await createGondolinSession({
       cwd: input.cwd,
@@ -30,8 +31,25 @@ export class PiAgentRunner implements AgentRunner {
     session.subscribe((event) => {
       if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") text += event.assistantMessageEvent.delta;
     });
-    await session.prompt(`${input.prompt}\nCorrelation metadata: ${JSON.stringify(input.metadata)}`);
+    await withSpan("factory.agent.turn", {
+      "factory.agent.role": input.role,
+      ...Object.fromEntries(Object.entries(input.metadata).map(([key, value]) => [`factory.${key}`, value])),
+    }, async () => {
+      await session.prompt(`${input.prompt}\nCorrelation metadata: ${JSON.stringify(input.metadata)}`);
+    });
     close();
     return { text, sessionId: session.sessionId };
   }
+}
+
+function instrumentTool<T extends { name: string; execute: (...args: any[]) => Promise<unknown> }>(toolName: string, tool: T): T {
+  const original = tool.execute.bind(tool);
+  tool.execute = async (...args: Parameters<T["execute"]>) => withSpan("factory.tool.call", {
+    "factory.tool.name": toolName,
+    "factory.tool.args": JSON.stringify(args[1] ?? {}),
+  }, async () => {
+    recordToolCall({ "factory.tool.name": toolName });
+    return original(...args);
+  });
+  return tool;
 }

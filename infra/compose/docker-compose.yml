@@ -34,3 +34,10 @@ services:
 volumes:
   postgres-data:
   hindsight-data:
+
+# Local LGTM observability profile:
+#   docker compose -f infra/compose/docker-compose.yml -f infra/observability/docker-compose.lgtm.yml up
+#
+# Factory services should export OTLP to http://127.0.0.1:4318 with:
+#   OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
+#   OTEL_SERVICE_NAME=software-factory

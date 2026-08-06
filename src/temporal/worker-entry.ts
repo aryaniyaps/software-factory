@@ -1,4 +1,7 @@
 import { pathToFileURL } from "node:url";
+import { initTelemetry } from "../telemetry/bootstrap.js";
+
+initTelemetry();
 
 const modulePath = process.env.FACTORY_WORKER_MODULE;
 if (!modulePath) throw new Error("FACTORY_WORKER_MODULE is required");
