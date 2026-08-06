@@ -11,3 +11,7 @@ export {
   repositoryHealthWorkflow,
   REPOSITORY_HEALTH_SCHEDULE_CRON,
 } from "./repository-health-workflow.js";
+export {
+  metaFactoryWorkflow,
+  META_FACTORY_SCHEDULE_CRON,
+} from "./meta-factory-workflow.js";
