@@ -7,7 +7,7 @@ describe("production activities", () => {
     const activities = createProductionActivities({
       prepareRepository: async () => ({ repository: "org/app", revision: "abc" }),
       createWorktree: async () => ({ path: "/worktree", branch: "factory/run" }),
-      agentRunner: { run: async () => { calls.push("agent"); return { sessionId: "session", text: "{}" }; } },
+      agentRunner: { run: async () => { calls.push("agent"); return { sessionId: "session", text: JSON.stringify({ schemaVersion: "agent-output.v1", role: "implement", status: "succeeded", summary: "done", evidenceRefs: ["ev-1"], data: {} }) }; } },
       workspace: {
         create: async () => ({ id: "vm" }),
         exec: async (_id, command) => { calls.push(command); return { exitCode: 0, stdout: "src/index.ts\n", stderr: "" }; },

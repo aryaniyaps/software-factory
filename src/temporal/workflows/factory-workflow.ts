@@ -7,7 +7,7 @@ import {
 import type * as activities from "../activities/types.js";
 import type { FactoryWorkflowInput } from "../client.js";
 import { TASK_QUEUES } from "../task-queues.js";
-import { FACTORY_NODE_NAMES, type FactoryWorkflowState } from "./types.js";
+import { FACTORY_NODE_NAMES, type FactoryNodeName, type FactoryWorkflowState } from "./types.js";
 
 const activityOptions = {
   startToCloseTimeout: "30 minutes",
@@ -30,12 +30,18 @@ export const cancelFactorySignal = defineSignal("cancelFactory");
 export const factoryStatusQuery = defineQuery<FactoryWorkflowState>("factoryStatus");
 
 export async function factoryWorkflow(input: FactoryWorkflowInput): Promise<FactoryWorkflowState> {
-  const state: FactoryWorkflowState = { runId: input.runId, status: "running", completedNodes: [] };
+  const state: {
+    schemaVersion: "factory-run.v1";
+    runId: string;
+    status: FactoryWorkflowState["status"];
+    completedNodes: FactoryNodeName[];
+    failedNode?: FactoryNodeName;
+  } = { schemaVersion: "factory-run.v1", runId: input.runId, status: "running", completedNodes: [] };
   let cancelled = false;
   setHandler(cancelFactorySignal, () => { cancelled = true; });
-  setHandler(factoryStatusQuery, () => ({ ...state, completedNodes: [...state.completedNodes] }));
+  setHandler(factoryStatusQuery, (): FactoryWorkflowState => ({ ...state, completedNodes: [...state.completedNodes] }));
 
-  const complete = (node: string) => state.completedNodes.push(node);
+  const complete = (node: FactoryNodeName) => { state.completedNodes = [...state.completedNodes, node]; };
   const checkCancelled = () => {
     if (cancelled) {
       state.status = "cancelled";
@@ -55,7 +61,7 @@ export async function factoryWorkflow(input: FactoryWorkflowInput): Promise<Fact
     complete("security_scan");
     checkCancelled();
 
-    let previous: unknown = preparation;
+    let previous: object = preparation;
     for (const role of ["scout", "plan", "implement"] as const) {
       const result = await agentActivity.runAgent({ run: input, worktree, role, input: previous });
       previous = result.output;
@@ -85,7 +91,7 @@ export async function factoryWorkflow(input: FactoryWorkflowInput): Promise<Fact
     complete("health_check");
     await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "Done", runId: input.runId });
     state.status = "succeeded";
-    return state;
+    return state as FactoryWorkflowState;
   } catch (error) {
     state.status = cancelled ? "cancelled" : "failed";
     state.failedNode = FACTORY_NODE_NAMES[state.completedNodes.length];

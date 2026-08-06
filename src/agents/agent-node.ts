@@ -31,7 +31,7 @@ export function createAgentNode(runner: AgentRunner, role: string): WorkflowNode
   return {
     name: role,
     kind: "agent",
-    run: async (input: unknown, context: NodeContext) => {
+    run: async (input: object, context: NodeContext) => {
       const result = await runner.run({
         role,
         prompt: `Work as the ${role} phase. Return only the required JSON envelope.\nInput:\n${JSON.stringify(input)}`,

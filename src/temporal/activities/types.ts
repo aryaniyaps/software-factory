@@ -1,4 +1,5 @@
 import type { FactoryWorkflowInput } from "../client.js";
+import type { AgentInput, AgentOutput, AgentRole } from "../../contracts/nodes.js";
 
 export interface RepositoryPreparation {
   repository: string;
@@ -17,13 +18,13 @@ export interface WorktreeResult {
 export interface AgentActivityInput {
   run: FactoryWorkflowInput;
   worktree: WorktreeResult;
-  role: "scout" | "plan" | "implement" | "repair" | "review";
-  input: unknown;
+  role: AgentRole;
+  input: AgentInput;
 }
 
 export interface AgentActivityResult {
   sessionId: string;
-  output: unknown;
+  output: AgentOutput;
 }
 
 export interface ChecksInput {

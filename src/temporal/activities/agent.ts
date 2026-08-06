@@ -2,6 +2,7 @@ import { toolsForRole } from "../../agents/tool-policy.js";
 import type { AgentRunner } from "../../agents/agent-node.js";
 import { profileForRole } from "../../agents/role-profiles.js";
 import type { FactoryActivities } from "./types.js";
+import { parseAgentOutput } from "../../contracts/nodes.js";
 
 export interface AgentMemoryHooks {
   buildContext(input: { run: unknown; role: string; value: unknown; mentalModels: readonly string[] }): Promise<string>;
@@ -27,7 +28,7 @@ export function createAgentActivities(dependencies: { run: AgentRunner["run"]; m
         },
       });
       if (dependencies.memory) await dependencies.memory.retainOutcome({ run: input.run, role: input.role, output: result.text });
-      return { sessionId: result.sessionId, output: result.text };
+      return { sessionId: result.sessionId, output: parseAgentOutput(result.text) };
     },
   };
 }
