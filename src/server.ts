@@ -7,6 +7,7 @@ import { createTemporalClient } from "./temporal/client.js";
 
 const pool = createPool();
 await pool.query(await readFile(new URL("./db/schema.sql", import.meta.url), "utf8"));
+await pool.query(await readFile(new URL("./db/migrations/002_evidence_spine.sql", import.meta.url), "utf8"));
 const temporal = await createTemporalClient();
 const store = new PostgresApplicationStore(pool);
 const server = createApiServer(createProductionApi({ store, workflowClient: temporal }));
