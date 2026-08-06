@@ -30,7 +30,6 @@ export function createProductionApi(input: { store: ApiStore; workflowClient: Wo
     async cancelRun(id) {
       if (!input.workflowClient.workflow.getHandle) throw new Error(`unsupported run cancellation: ${id}`);
       await input.workflowClient.workflow.getHandle(`factory-${id}`).signal("cancelFactory");
-      await input.store.cancelRun(id);
     },
   };
 }

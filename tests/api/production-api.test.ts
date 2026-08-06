@@ -29,10 +29,14 @@ describe("production API", () => {
     expect(starts[0]).toMatchObject({ workflowId: "factory-task-1" });
   });
 
-  it("signals Temporal when a run is cancelled", async () => {
+  it("signals Temporal when a run is cancelled without mutating projection state", async () => {
     let signal = "";
+    let storeCancelled = false;
     const api = createProductionApi({
-      store: store(),
+      store: {
+        ...store(),
+        async cancelRun() { storeCancelled = true; },
+      },
       workflowClient: {
         workflow: {
           async start() { return {}; },
@@ -44,6 +48,7 @@ describe("production API", () => {
     await api.cancelRun("task-1");
 
     expect(signal).toBe("cancelFactory");
+    expect(storeCancelled).toBe(false);
   });
 
   it("uses the same workflow ID for the same task", async () => {
