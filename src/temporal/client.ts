@@ -11,6 +11,11 @@ export interface FactoryWorkflowInput {
   workflow: string;
   deploymentProfile: string;
   sandboxProfile: string;
+  title?: string;
+  description?: string;
+  policyVersion?: string;
+  riskTier?: string;
+  assurancePlanHash?: string;
   attemptId?: string;
   organization?: string;
   project?: string;
