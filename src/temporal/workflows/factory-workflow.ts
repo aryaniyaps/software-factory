@@ -17,6 +17,7 @@ import { TASK_QUEUES } from "../task-queues.js";
 import { runRepairLoop } from "./repair-loop.js";
 import { runMaintainabilityLoop } from "./maintainability-loop.js";
 import { runNodeAttempt, runNodeWithRetry } from "./run-node.js";
+import { releaseWorkflow } from "./release-workflow.js";
 import {
   FACTORY_NODE_NAMES,
   MAX_NODE_ATTEMPTS_BEFORE_CONTINUE_AS_NEW,
@@ -42,7 +43,6 @@ const activityOptions = {
 const controlActivity = proxyActivities<typeof activities>({ ...activityOptions, taskQueue: TASK_QUEUES.control });
 const agentActivity = proxyActivities<typeof activities>({ ...activityOptions, taskQueue: TASK_QUEUES.agent });
 const buildActivity = proxyActivities<typeof activities>({ ...activityOptions, taskQueue: TASK_QUEUES.build });
-const deployActivity = proxyActivities<typeof activities>({ ...activityOptions, taskQueue: TASK_QUEUES.deploy });
 const verifierActivity = proxyActivities<typeof activities>({ ...activityOptions, taskQueue: TASK_QUEUES.verifier });
 
 export const cancelFactorySignal = defineSignal("cancelFactory");
@@ -410,37 +410,28 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     const artifact = buildAttempt.result.output!;
     checkCancelled();
 
-    state.currentNode = "deploy";
-    const deployAttempt = await runNodeAttempt({
+    state.currentNode = "release_controller";
+    const releaseAttempt = await runNodeAttempt({
       runId: input.runId,
-      node: "deploy",
+      node: "release_controller",
       attemptNumber: 1,
       budget: state.budget,
-      execute: () => deployActivity.deploy({ run: input, artifact }),
+      execute: async () => releaseWorkflow({ run: input, artifact }),
     });
-    state.budget = deployAttempt.budget;
-    state.nodeAttempts = recordAttempt(state.nodeAttempts, deployAttempt.attemptRef);
-    if (deployAttempt.result.status === "failed") return await failRun("deploy", worktree.path);
-    const deployment = deployAttempt.result.output!;
+    state.budget = releaseAttempt.budget;
+    state.nodeAttempts = recordAttempt(state.nodeAttempts, releaseAttempt.attemptRef);
+    if (releaseAttempt.result.status === "failed") return await failRun("release_controller", worktree.path);
+    const release = releaseAttempt.result.output!;
+    if (release.status === "abstained") return await abstain("release_controller", worktree.path);
+    if (release.status === "rolled_back") {
+      state.status = "rolled_back";
+      state.failedNode = "release_controller";
+      if (worktree.path) await controlActivity.removeWorktree(worktree.path);
+      await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "rolled_back", runId: input.runId });
+      return buildFinalState(state);
+    }
+    if (release.status !== "promoted") return await failRun("release_controller", worktree.path);
     checkCancelled();
-
-    state.currentNode = "health_check";
-    const healthAttempt = await runNodeWithRetry({
-      runId: input.runId,
-      node: "health_check",
-      budget: state.budget,
-      maxAttempts: 2,
-      execute: async () => {
-        const health = await deployActivity.healthCheck({ run: input, url: deployment.healthUrl, digest: artifact.digest });
-        if (!health.healthy) throw new Error(`health check failed: ${health.url}`);
-        return health;
-      },
-    });
-    state.budget = healthAttempt.budget;
-    recordAttempts(healthAttempt.attemptRefs);
-    if (healthAttempt.abstained) return await abstain("health_check", worktree.path);
-    if (healthAttempt.failed) return await failRun("health_check", worktree.path);
-
     await controlActivity.removeWorktree(worktree.path);
     await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "Done", runId: input.runId });
     state.status = "succeeded";

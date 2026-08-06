@@ -68,6 +68,24 @@ export function createProductionActivities(dependencies: ProductionActivityDepen
     }),
     buildArtifact: dependencies.buildArtifact,
     deploy: dependencies.deploy,
+    getDeploymentTarget: async () => {
+      throw new Error("release controller requires deploy worker");
+    },
+    deployPreview: async () => {
+      throw new Error("release controller requires deploy worker");
+    },
+    deployCanary: async () => {
+      throw new Error("release controller requires deploy worker");
+    },
+    verifyRelease: async () => {
+      throw new Error("release controller requires deploy worker");
+    },
+    observeDeployment: async () => {
+      throw new Error("release controller requires deploy worker");
+    },
+    rollbackDeployment: async () => {
+      throw new Error("release controller requires deploy worker");
+    },
     runBehavioralVerification: async () => {
       throw new Error("behavioral verification requires verifier worker");
     },
