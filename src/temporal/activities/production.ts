@@ -60,6 +60,9 @@ export function createProductionActivities(dependencies: ProductionActivityDepen
     },
     buildArtifact: dependencies.buildArtifact,
     deploy: dependencies.deploy,
+    runBehavioralVerification: async () => {
+      throw new Error("behavioral verification requires verifier worker");
+    },
     healthCheck: async ({ url }) => {
       try {
         await dependencies.health.wait(url, { attempts: 3, intervalMs: 500 });

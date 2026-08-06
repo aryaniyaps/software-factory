@@ -1,0 +1,7 @@
+{
+  "scenarios": [
+    "behavior-api.yaml",
+    "refactor-cli.yaml",
+    "noisy-performance.yaml"
+  ]
+}

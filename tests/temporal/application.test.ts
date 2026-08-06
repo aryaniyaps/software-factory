@@ -15,7 +15,7 @@ describe("production application", () => {
     });
     await app.reconcile();
     await app.startWorkers();
-    expect(started).toEqual(["factory-control", "factory-agent", "factory-build", "factory-deploy"]);
+    expect(started).toEqual(["factory-control", "factory-agent", "factory-build", "factory-deploy", "factory-verifier"]);
     await app.close();
     expect(closed).toBe(true);
   });

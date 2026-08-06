@@ -3,4 +3,5 @@ export const TASK_QUEUES = {
   agent: "factory-agent",
   build: "factory-build",
   deploy: "factory-deploy",
+  verifier: "factory-verifier",
 } as const;

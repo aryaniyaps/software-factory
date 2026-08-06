@@ -1,0 +1,11 @@
+schemaVersion: scenario.v1
+id: SCN-REFACTOR-CLI
+title: Stable marker must exist on both revisions
+type: cli
+mode: refactor
+acceptance:
+  - AC-STABLE-MARKER
+adapter:
+  command: test
+  args: ["-f", "stable.marker"]
+repeats: 1
