@@ -1,4 +1,4 @@
-import { Type, type Static } from "typebox";
+import { Type, type Static, type TSchema } from "typebox";
 import { Check, Errors } from "typebox/value";
 
 const SHA256 = Type.String({ pattern: "^[a-f0-9]{64}$" });
@@ -41,10 +41,10 @@ export const EvidenceItemSchema = Type.Object({
 }, { additionalProperties: false });
 export type EvidenceItem = Readonly<Static<typeof EvidenceItemSchema>>;
 
-function parse<T>(schema: Parameters<typeof Check>[0], value: unknown): T {
+function parse<T>(schema: TSchema, value: unknown): T {
   if (Check(schema, value)) return value as T;
   const error = [...Errors(schema, value)][0];
-  throw new Error(`Invalid contract at ${error?.path || "/"}: ${error?.message || "schema mismatch"}`);
+  throw new Error(`Invalid contract: ${error?.message || "schema mismatch"}`);
 }
 
 export function parseEvidenceRef(value: unknown): EvidenceRef {

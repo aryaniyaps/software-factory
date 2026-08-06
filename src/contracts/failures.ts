@@ -21,5 +21,5 @@ export type FailureEnvelope = Readonly<Static<typeof FailureEnvelopeSchema>>;
 export function parseFailureEnvelope(value: unknown): FailureEnvelope {
   if (Check(FailureEnvelopeSchema, value)) return value as FailureEnvelope;
   const error = [...Errors(FailureEnvelopeSchema, value)][0];
-  throw new Error(`Invalid failure envelope at ${error?.path || "/"}: ${error?.message || "schema mismatch"}`);
+  throw new Error(`Invalid failure envelope: ${error?.message || "schema mismatch"}`);
 }

@@ -23,5 +23,5 @@ export type GateDecision = Readonly<Static<typeof GateDecisionSchema>>;
 export function parseGateDecision(value: unknown): GateDecision {
   if (Check(GateDecisionSchema, value)) return value as GateDecision;
   const error = [...Errors(GateDecisionSchema, value)][0];
-  throw new Error(`Invalid gate decision at ${error?.path || "/"}: ${error?.message || "schema mismatch"}`);
+  throw new Error(`Invalid gate decision: ${error?.message || "schema mismatch"}`);
 }
