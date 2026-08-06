@@ -36,7 +36,7 @@ const activityOptions = {
     backoffCoefficient: 2,
     maximumInterval: "5 minutes",
     maximumAttempts: 1,
-    nonRetryableErrorTypes: ["PolicyViolation", "SecurityRejected", "InvalidTask"],
+    nonRetryableErrorTypes: ["PolicyViolation", "SecurityRejected", "InvalidTask", "HumanEscalation"],
   },
 };
 
@@ -50,8 +50,14 @@ export const rerunNodeSignal = defineSignal<[FactoryNodeName]>("rerunNode");
 export const rollbackReleaseSignal = defineSignal("rollbackRelease");
 export const factoryStatusQuery = defineQuery<FactoryWorkflowState>("factoryStatus");
 
-function agentSucceeded(output: { status: "succeeded" | "failed" | "abstained"; summary: string }): boolean {
+function agentSucceeded(output: { status: "succeeded" | "failed" | "abstained" | "escalate_to_human"; summary: string }): boolean {
   return output.status === "succeeded";
+}
+
+function agentFailureName(status: "failed" | "abstained" | "escalate_to_human"): string {
+  if (status === "escalate_to_human") return "HumanEscalation";
+  if (status === "abstained") return "BudgetExhausted";
+  return "PolicyViolation";
 }
 
 export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): Promise<FactoryWorkflowState> {
@@ -223,7 +229,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
           if (!agentSucceeded(result.output)) {
             const failedOutput = result.output;
             const error = new Error(`${role} agent ${failedOutput.status}: ${failedOutput.summary}`);
-            error.name = failedOutput.status === "abstained" ? "BudgetExhausted" : "PolicyViolation";
+            error.name = agentFailureName(failedOutput.status as "failed" | "abstained" | "escalate_to_human");
             throw error;
           }
           return result;
@@ -250,7 +256,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
         if (!agentSucceeded(repair.output)) {
           const failedOutput = repair.output;
           const error = new Error(`repair agent ${failedOutput.status}: ${failedOutput.summary}`);
-          error.name = failedOutput.status === "abstained" ? "BudgetExhausted" : "PolicyViolation";
+          error.name = agentFailureName(failedOutput.status as "failed" | "abstained" | "escalate_to_human");
           throw error;
         }
         return repair.output;
@@ -301,7 +307,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
           if (!agentSucceeded(critic.output)) {
             const failedOutput = critic.output;
             const error = new Error(`maintainability critic ${failedOutput.status}: ${failedOutput.summary}`);
-            error.name = failedOutput.status === "abstained" ? "BudgetExhausted" : "PolicyViolation";
+            error.name = agentFailureName(failedOutput.status as "failed" | "abstained" | "escalate_to_human");
             throw error;
           }
           criticReports.push(critic.output.data.report);
@@ -329,7 +335,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
         if (!agentSucceeded(repair.output)) {
           const failedOutput = repair.output;
           const error = new Error(`maintainability repair ${failedOutput.status}: ${failedOutput.summary}`);
-          error.name = failedOutput.status === "abstained" ? "BudgetExhausted" : "PolicyViolation";
+          error.name = agentFailureName(failedOutput.status as "failed" | "abstained" | "escalate_to_human");
           throw error;
         }
         return repair.output;

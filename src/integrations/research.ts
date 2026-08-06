@@ -70,8 +70,14 @@ export class Context7McpClient {
 }
 
 export class Context7Client implements Context7ToolClient {
-  private readonly mcp = new Context7McpClient();
+  private readonly mcp: Context7McpClient;
 
+  constructor(endpointOrConfig?: string | Context7McpConfig, apiKey?: string) {
+    const config = typeof endpointOrConfig === "string"
+      ? { endpoint: endpointOrConfig, apiKey }
+      : endpointOrConfig ?? {};
+    this.mcp = new Context7McpClient(config);
+  }
   async call(input: { library: string; query: string }): Promise<string> {
     const libraryId = await this.mcp.resolveLibraryId(input.library);
     return this.mcp.queryDocs(libraryId, input.query);

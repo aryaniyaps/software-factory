@@ -53,7 +53,7 @@ describe("Context7Client", () => {
     const client = new Context7Client("https://mcp.context7.com/mcp", "test-key");
     await expect(client.call({ library: "react", query: "useEffect" })).resolves.toBe("hook docs");
 
-    expect(connect).toHaveBeenCalledOnce();
+    expect(connect).toHaveBeenCalledTimes(2);
     expect(callTool).toHaveBeenNthCalledWith(1, {
       name: "resolve-library-id",
       arguments: { libraryName: "react" },
@@ -62,7 +62,7 @@ describe("Context7Client", () => {
       name: "query-docs",
       arguments: { libraryId: "/org/react", query: "useEffect" },
     });
-    expect(clientClose).toHaveBeenCalledOnce();
-    expect(transportClose).toHaveBeenCalledOnce();
+    expect(clientClose).toHaveBeenCalledTimes(2);
+    expect(transportClose).toHaveBeenCalledTimes(2);
   });
 });
