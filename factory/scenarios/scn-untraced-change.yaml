@@ -1,0 +1,4 @@
+id: SCN-UNTRACED-CHANGE
+title: Untraced production changes fail the traceability gate
+acceptance:
+  - AC-TRACEABILITY-GATE

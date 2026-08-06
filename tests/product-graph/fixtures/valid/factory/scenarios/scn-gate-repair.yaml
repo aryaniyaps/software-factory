@@ -1,0 +1,4 @@
+id: SCN-001
+title: Gate failure triggers repair
+acceptance:
+  - AC-001

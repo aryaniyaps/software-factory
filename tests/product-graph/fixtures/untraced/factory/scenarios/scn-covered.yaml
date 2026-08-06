@@ -1,0 +1,4 @@
+id: SCN-001
+title: Scenario evidence
+acceptance:
+  - AC-001

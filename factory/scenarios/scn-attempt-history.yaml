@@ -1,0 +1,4 @@
+id: SCN-ATTEMPT-HISTORY
+title: Retries create distinct attempts
+acceptance:
+  - AC-ATTEMPT-HISTORY
