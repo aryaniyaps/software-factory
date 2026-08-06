@@ -9,8 +9,8 @@ describe("GithubProjectProvider", () => {
       { id: "item-b", content: { __typename: "Issue", title: "B", body: "Do B", repository: { nameWithOwner: "org/b" } }, fieldValues: [{ name: "Status", value: "Ready" }] },
     ] } } }) };
     const provider = new GithubProjectProvider(client, { projectId: "project-1", fieldNames: { status: "Status", workflow: "Workflow" }, registry: new ProjectRegistry([
-      { repository: "org/a", defaultBranch: "main", deploymentProfile: "a", sandboxProfile: "gondolin" },
-      { repository: "org/b", defaultBranch: "trunk", deploymentProfile: "b", sandboxProfile: "gondolin" },
+      { repository: "org/a", defaultBranch: "main", deploymentProfile: "a", sandboxProfile: "crabbox" },
+      { repository: "org/b", defaultBranch: "trunk", deploymentProfile: "b", sandboxProfile: "crabbox" },
     ]) });
     await expect(provider.listReady()).resolves.toMatchObject([
       { repository: "org/a", baseBranch: "main" },

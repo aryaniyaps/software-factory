@@ -10,12 +10,13 @@ import { projectBankId, memoryTags } from "../integrations/hindsight-config.js";
 import { buildMemoryContext } from "./activities/memory-context.js";
 import { createFactoryProjection } from "../db/factory-projection.js";
 import { PiAgentRunner } from "../agents/pi-agent.js";
-import { GondolinWorkspaceProvider, officialGondolinRuntime } from "../workspaces/gondolin-provider.js";
+import { CrabboxWorkspaceProvider } from "../workspaces/crabbox-provider.js";
+import { officialCrabboxRuntime } from "../workspaces/crabbox-runtime.js";
 import { GitWorktreeManager } from "../workspaces/worktree-manager.js";
 import { SshExecutor } from "../deploy/ssh-executor.js";
 import { HealthChecker } from "../deploy/health-checker.js";
 import { createRepositoryActivities } from "./activities/repository.js";
-import { createGondolinActivityRuntime } from "./activities/gondolin.js";
+import { createCrabboxActivityRuntime } from "./activities/crabbox.js";
 import { createAgentActivities } from "./activities/agent.js";
 import { createBuildActivities } from "./activities/build.js";
 import { createDeployActivities, type DeploymentTarget } from "./activities/deploy.js";
@@ -54,8 +55,8 @@ async function prepareRepository(repository: string): Promise<{ repository: stri
 
 export async function startWorkers(): Promise<void> {
   const root = process.env.WORKTREE_ROOT ?? "/tmp/software-factory-worktrees";
-  const workspace = new GondolinWorkspaceProvider(officialGondolinRuntime);
-  const gondolin = createGondolinActivityRuntime(workspace);
+  const workspace = new CrabboxWorkspaceProvider(officialCrabboxRuntime);
+  const crabbox = createCrabboxActivityRuntime(workspace);
   const repository = createRepositoryActivities({ git: { prepare: prepareRepository }, worktrees: new GitWorktreeManager(root) });
   const pi = new PiAgentRunner();
   const hindsightClient = new HindsightClient({ baseUrl: process.env.HINDSIGHT_BASE_URL ?? "http://localhost:8888", apiKey: process.env.HINDSIGHT_API_KEY });
@@ -84,7 +85,7 @@ export async function startWorkers(): Promise<void> {
     },
   });
   const build = createBuildActivities({
-    runtime: gondolin,
+    runtime: crabbox,
     builder: {
       async build(vm, input) {
         const image = process.env.FACTORY_IMAGE;

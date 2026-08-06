@@ -17,7 +17,7 @@ describe("memory-aware agent Activities", () => {
       run: async () => { calls.push("pi"); return { sessionId: "session", text: "done" }; },
       memory: { buildContext: async () => "memory", retainOutcome: async () => { calls.push("retain"); } },
     });
-    await activities.runAgent({ run: { runId: "run", taskId: "task", repository: "/repo", baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "gondolin" }, worktree: { path: "/worktree", branch: "branch" }, role: "plan", input: {} });
+    await activities.runAgent({ run: { runId: "run", taskId: "task", repository: "/repo", baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "crabbox" }, worktree: { path: "/worktree", branch: "branch" }, role: "plan", input: {} });
     expect(calls).toEqual(["pi", "retain"]);
   });
 });

@@ -22,6 +22,6 @@ describe("Crabbox Activity runtime", () => {
 
   it("rejects non-Crabbox profiles", async () => {
     const provider: WorkspaceProvider = { create: async () => ({ id: "lease" }), exec: async () => ({ exitCode: 0, stdout: "", stderr: "" }), destroy: async () => {} };
-    await expect(createCrabboxActivityRuntime(provider).createForWorktree({ path: "/worktree", sandboxProfile: "gondolin" })).rejects.toThrow("unsupported sandbox profile");
+    await expect(createCrabboxActivityRuntime(provider).createForWorktree({ path: "/worktree", sandboxProfile: "legacy" })).rejects.toThrow("unsupported sandbox profile");
   });
 });

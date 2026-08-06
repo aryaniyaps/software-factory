@@ -8,7 +8,7 @@ describe("repository activities", () => {
       git: { prepare: async () => { called = true; return { repository: "/repo", revision: "abc" }; } },
       worktrees: { create: async () => ({ path: "/worktree", branch: "factory/run/task/1" }), remove: async () => {} },
     });
-    await expect(activities.prepareRepository({ runId: "run", taskId: "task", repository: "ssh://evil/repo", baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "gondolin" })).rejects.toThrow("repository must be local or HTTPS");
+    await expect(activities.prepareRepository({ runId: "run", taskId: "task", repository: "ssh://evil/repo", baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "crabbox" })).rejects.toThrow("repository must be local or HTTPS");
     expect(called).toBe(false);
   });
 
@@ -18,7 +18,7 @@ describe("repository activities", () => {
       git: { prepare: async () => ({ repository: "/repo", revision: "abc" }) },
       worktrees: { create: async (input) => { inputs.push(input); return { path: `/worktrees/${input.attemptId}`, branch: `factory/${input.attemptId}` }; }, remove: async () => {} },
     });
-    const base = { runId: "run", taskId: "task", repository: "/repo", baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "gondolin" };
+    const base = { runId: "run", taskId: "task", repository: "/repo", baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "crabbox" };
     await activities.createWorktree({ ...base, preparation: { repository: "/repo", revision: "abc" }, attemptId: "1" });
     await activities.createWorktree({ ...base, preparation: { repository: "/repo", revision: "abc" }, attemptId: "2" });
     expect(inputs.map((input) => input.attemptId)).toEqual(["1", "2"]);

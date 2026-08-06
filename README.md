@@ -1,8 +1,10 @@
 # Software Factory
 
-A code-defined, graph-oriented software factory. Temporal coordinates deterministic and Pi-backed workflow nodes across isolated Git worktrees and Gondolin VMs.
+A code-defined, graph-oriented software factory. Temporal coordinates deterministic and Pi-backed workflow nodes across isolated Git worktrees and Crabbox leases.
 
 ## Development
+
+Repository tests, scans, and builds run through Crabbox local-container leases. Install the `crabbox` CLI and Docker or Podman on the worker host. Crabbox syncs the worktree into the lease; commands that intentionally modify files must explicitly copy those files back before the lease is stopped. The worker never runs arbitrary repository commands directly on the host.
 
 ```bash
 npm install

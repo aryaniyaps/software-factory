@@ -8,7 +8,7 @@ describe("agent Activities", () => {
       run: async (input) => { received = input; return { sessionId: "session-1", text: "agent output" }; },
     });
     const result = await activities.runAgent({
-      run: { runId: "run", taskId: "task", repository: "/repo", baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "gondolin" },
+      run: { runId: "run", taskId: "task", repository: "/repo", baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "crabbox" },
       worktree: { path: "/worktree", branch: "factory/run/task/1" },
       role: "implement",
       input: { plan: "do it" },

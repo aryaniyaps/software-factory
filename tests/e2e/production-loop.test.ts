@@ -3,7 +3,7 @@ import { runConcurrentTasks } from "./helpers/temporal-harness.js";
 
 const task = (id: string, repository: string) => ({
   id, projectId: "project", projectItemId: id, title: id, description: id,
-  repository, baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "gondolin",
+  repository, baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "crabbox",
 });
 
 describe("production loop", () => {

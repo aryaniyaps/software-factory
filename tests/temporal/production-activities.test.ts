@@ -17,7 +17,7 @@ describe("production activities", () => {
       deploy: async () => { calls.push("deploy"); return { deployed: true, healthUrl: "http://app" }; },
       updateTaskStatus: async () => {},
     });
-    const input = { runId: "run", taskId: "task", repository: "org/app", baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "gondolin" };
+    const input = { runId: "run", taskId: "task", repository: "org/app", baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "crabbox" };
     const worktree = await activities.createWorktree({ ...input, preparation: { repository: "org/app", revision: "abc" } });
     await activities.runAgent({ run: input, worktree, role: "implement", input: {} });
     await activities.runChecks({ run: input, worktree });
