@@ -53,6 +53,15 @@ export interface ChecksResult {
   output: string;
 }
 
+export interface FitnessAssessmentResult {
+  outcome: "pass" | "policy_block" | "insufficient_evidence";
+  policyVersion: string;
+  shadowMode: boolean;
+  findings: readonly import("../../assurance/fitness/types.js").FitnessFinding[];
+  rawSubScores: readonly import("../../assurance/fitness/types.js").FitnessRawSubScore[];
+  missingCapabilities: readonly import("../../assurance/fitness/types.js").FitnessCapability[];
+}
+
 export interface BuildInput {
   run: FactoryWorkflowInput;
   worktree: WorktreeResult;
@@ -88,6 +97,7 @@ export interface FactoryActivities {
   runAgent(input: AgentActivityInput): Promise<AgentActivityResult>;
   securityScan(input: SecurityScanInput): Promise<SecurityScanResult>;
   runChecks(input: ChecksInput): Promise<ChecksResult>;
+  runFitnessAssessment(input: ChecksInput): Promise<FitnessAssessmentResult>;
   runBehavioralVerification(input: import("./verifier.js").BehavioralVerifyInput): Promise<import("./verifier.js").BehavioralVerifyResult>;
   buildArtifact(input: BuildInput): Promise<ArtifactResult>;
   deploy(input: DeployInput): Promise<DeployResult>;
@@ -101,6 +111,7 @@ export declare function removeWorktree(path: string): Promise<void>;
 export declare function runAgent(input: AgentActivityInput): Promise<AgentActivityResult>;
 export declare function securityScan(input: SecurityScanInput): Promise<SecurityScanResult>;
 export declare function runChecks(input: ChecksInput): Promise<ChecksResult>;
+export declare function runFitnessAssessment(input: ChecksInput): Promise<FitnessAssessmentResult>;
 export declare function runBehavioralVerification(input: import("./verifier.js").BehavioralVerifyInput): Promise<import("./verifier.js").BehavioralVerifyResult>;
 export declare function buildArtifact(input: BuildInput): Promise<ArtifactResult>;
 export declare function deploy(input: DeployInput): Promise<DeployResult>;
