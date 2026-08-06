@@ -46,10 +46,60 @@ type MockOptions = {
   exhaustedBudget?: boolean;
 };
 
+function createReleaseActivities(calls: string[], previousDigest: string) {
+  const digest = `registry/app@sha256:${"a".repeat(64)}`;
+  return {
+    deployPreview: async () => {
+      calls.push("preview_deploy");
+      return { previewUrl: "http://preview/health", healthUrl: "http://app/health", previousDigest };
+    },
+    verifyRelease: async () => {
+      calls.push("release_verify");
+      return { passed: true, reasons: [] };
+    },
+    deployCanary: async () => {
+      calls.push("canary_deploy");
+      return { deployed: true, percentage: 100, stageIndex: 0 };
+    },
+    observeDeployment: async () => {
+      calls.push("observe");
+      return {
+        technical: { healthOk: true, errorRate: 0.001, latencyP99Ms: 100 },
+        semantic: { productChecksPassed: true, sloBreaches: [] },
+      };
+    },
+    rollbackDeployment: async () => {
+      calls.push("rollback");
+      return {
+        rolledBack: true,
+        digest: previousDigest,
+        idempotent: false,
+        fence: { deploymentId: "dep", fencedAt: "2026-08-06T00:00:00.000Z" },
+      };
+    },
+    getDeploymentTarget: async () => ({
+      host: "staging",
+      healthUrl: "http://app/health",
+      previewUrl: "http://preview/health",
+      previousDigest,
+    }),
+    deploy: async () => {
+      calls.push("deploy");
+      return { deployed: true, healthUrl: "http://app/health" };
+    },
+    healthCheck: async () => {
+      calls.push("health_check");
+      return { healthy: true, url: "http://app/health" };
+    },
+    digest,
+  };
+}
+
 function createActivities(options: MockOptions = {}) {
   const calls: string[] = [];
   let scoutAttempts = 0;
   const checks = [...(options.checks ?? [{ passed: true, output: "ok" }])];
+  const release = createReleaseActivities(calls, `registry/app@sha256:${"b".repeat(64)}`);
 
   const activities = {
     prepareRepository: async () => {
@@ -132,16 +182,9 @@ function createActivities(options: MockOptions = {}) {
     },
     buildArtifact: async () => {
       calls.push("build_artifact");
-      return { image: "app", digest: "sha256:abc" };
+      return { image: "registry/app", digest: release.digest };
     },
-    deploy: async () => {
-      calls.push("deploy");
-      return { deployed: true, healthUrl: "http://app/health" };
-    },
-    healthCheck: async () => {
-      calls.push("health_check");
-      return { healthy: true, url: "http://app/health" };
-    },
+    ...release,
     updateTaskStatus: async ({ status }: { status: string }) => {
       calls.push(`status:${status}`);
     },
@@ -201,8 +244,7 @@ describe("factory workflow topology", () => {
       "behavioral_verify",
       "review",
       "build_artifact",
-      "deploy",
-      "health_check",
+      "release_controller",
     ]);
   });
 });

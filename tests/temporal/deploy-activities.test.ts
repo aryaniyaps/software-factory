@@ -27,4 +27,32 @@ describe("deploy activities", () => {
     await expect(activities.deploy({ run: { runId: "run", taskId: "task", repository: "/repo", baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "crabbox" }, artifact: { image: "registry/app:latest", digest: "registry/app:latest" } })).rejects.toThrow("immutable image digest");
     expect(called).toBe(false);
   });
+
+  it("rolls back the exact previous digest when semantic observation fails", async () => {
+    const commands: string[][] = [];
+    const candidateDigest = `registry/app@sha256:${"a".repeat(64)}`;
+    const previousDigest = `registry/app@sha256:${"b".repeat(64)}`;
+    const activities = createDeployActivities({
+      targets: { staging: { host: "staging", healthUrl: "http://staging/health", previousDigest } },
+      ssh: { run: async (_host, args) => { commands.push(args); return { exitCode: 0, stdout: "", stderr: "" }; } },
+      health: { wait: async () => {} },
+      productSignals: {
+        collect: async () => ({ productChecksPassed: false, sloBreaches: ["checkout-success-rate"] }),
+      },
+    });
+    const run = { runId: "run", taskId: "task", repository: "/repo", baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "crabbox" };
+    await activities.deployCanary({ run, artifact: { image: "registry/app", digest: candidateDigest }, deploymentId: "dep-1", percentage: 100, stageIndex: 0 });
+    const signals = await activities.observeDeployment({ run, deploymentId: "dep-1", digest: candidateDigest, healthUrl: "http://staging/health" });
+    expect(signals.semantic.productChecksPassed).toBe(false);
+    const rollback = await activities.rollbackDeployment({
+      run,
+      deploymentId: "dep-1",
+      candidateDigest,
+      targetDigest: previousDigest,
+      idempotencyKey: `rollback:dep-1:${candidateDigest}->${previousDigest}`,
+      healthUrl: "http://staging/health",
+    });
+    expect(rollback.digest).toBe(previousDigest);
+    expect(commands).toContainEqual(["docker", "run", "-d", "--name", "factory-app", previousDigest]);
+  });
 });
