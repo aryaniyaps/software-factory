@@ -14,7 +14,7 @@ describe("memory-aware agent Activities", () => {
   it("retains the completed role outcome after Pi returns", async () => {
     const calls: string[] = [];
     const activities = createAgentActivities({
-      run: async () => { calls.push("pi"); return { sessionId: "session", text: "done" }; },
+      run: async () => { calls.push("pi"); return { sessionId: "session", text: JSON.stringify({ schemaVersion: "agent-output.v1", role: "plan", status: "succeeded", summary: "done", evidenceRefs: ["ev-1"], data: {} }) }; },
       memory: { buildContext: async () => "memory", retainOutcome: async () => { calls.push("retain"); } },
     });
     await activities.runAgent({ run: { runId: "run", taskId: "task", repository: "/repo", baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "crabbox" }, worktree: { path: "/worktree", branch: "branch" }, role: "plan", input: {} });
