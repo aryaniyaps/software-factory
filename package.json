@@ -12,7 +12,11 @@
     "dev": "tsx src/server.ts",
     "worker": "tsx src/temporal/worker-entry.ts",
     "bootstrap:pi-resources": "tsx scripts/bootstrap-pi-resources.ts",
-    "factory:contract:check": "tsx scripts/factory-contract-check.ts"
+    "factory:contract:check": "tsx scripts/factory-contract-check.ts",
+    "compose:up": "docker compose -f infra/compose/docker-compose.yml up -d",
+    "compose:down": "docker compose -f infra/compose/docker-compose.yml down",
+    "compose:obs": "docker compose -f infra/compose/docker-compose.yml --profile observability up -d",
+    "compose:worker": "docker compose -f infra/compose/docker-compose.yml --profile worker up -d"
   },
   "dependencies": {
     "@earendil-works/gondolin": "^0.12.0",

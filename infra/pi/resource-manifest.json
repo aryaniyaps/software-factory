@@ -8,9 +8,14 @@
   "skillsRoot": "src/agents/skills/engineering",
   "webSearchConfig": "infra/pi/web-search.json.example",
   "requiredSkills": [
+    "src/agents/skills/engineering/research/SKILL.md",
+    "src/agents/skills/engineering/wayfinder/SKILL.md",
+    "src/agents/skills/engineering/codebase-design/SKILL.md",
+    "src/agents/skills/engineering/domain-modeling/SKILL.md",
     "src/agents/skills/engineering/tdd/SKILL.md",
-    "src/agents/skills/engineering/code-review/SKILL.md",
+    "src/agents/skills/engineering/implement/SKILL.md",
     "src/agents/skills/engineering/diagnosing-bugs/SKILL.md",
-    "src/agents/skills/engineering/implement/SKILL.md"
+    "src/agents/skills/engineering/improve-codebase-architecture/SKILL.md",
+    "src/agents/skills/engineering/code-review/SKILL.md"
   ]
 }

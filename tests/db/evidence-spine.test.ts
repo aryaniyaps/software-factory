@@ -4,9 +4,9 @@ import { createEvidenceStore } from "../../src/evidence/evidence-store.js";
 import { createFilesystemObjectStore } from "../../src/evidence/object-store.js";
 import { createFactoryProjection, type Queryable } from "../../src/db/factory-projection.js";
 
-describe("evidence spine migration", () => {
-  it("defines append-only projection tables for clean install and upgrade", async () => {
-    const migration = await readFile(new URL("../../src/db/migrations/002_evidence_spine.sql", import.meta.url), "utf8");
+describe("evidence spine schema", () => {
+  it("defines append-only projection tables in the production baseline", async () => {
+    const schema = await readFile(new URL("../../src/db/schema.sql", import.meta.url), "utf8");
     const required = [
       "factory_node_attempts",
       "agent_sessions",
@@ -22,17 +22,13 @@ describe("evidence spine migration", () => {
       "oracle_calibrations",
       "evidence_manifests",
       "factory_event_outbox",
+      "probe_runs",
     ];
     for (const table of required) {
-      expect(migration).toContain(table);
+      expect(schema).toContain(table);
     }
-    expect(migration).not.toMatch(/DROP TABLE/i);
-  });
-
-  it("defines probe run projection table for operations API", async () => {
-    const migration = await readFile(new URL("../../src/db/migrations/003_probe_runs.sql", import.meta.url), "utf8");
-    expect(migration).toContain("probe_runs");
-    expect(migration).not.toMatch(/DROP TABLE/i);
+    expect(schema).not.toMatch(/CREATE TABLE IF NOT EXISTS runs\b/);
+    expect(schema).not.toMatch(/DROP TABLE/i);
   });
 });
 

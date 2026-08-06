@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 import { createPool } from "../db/database.js";
 import { HindsightClient } from "@vectorize-io/hindsight-client";
 import { HindsightMemory } from "../integrations/hindsight.js";
-import { projectBankId, memoryTags } from "../integrations/hindsight-config.js";
-import { buildMemoryContext } from "./activities/memory-context.js";
+import { memoryBankFromEnv, memoryTags, resolveProjectBank } from "../integrations/hindsight-config.js";
+import { assembleAgentMemory, retainableAgentOutcome } from "../agents/memory.js";
 import { createFactoryProjection } from "../db/factory-projection.js";
 import { PiAgentRunner } from "../agents/pi-agent.js";
 import { CrabboxWorkspaceProvider } from "../workspaces/crabbox-provider.js";
@@ -20,6 +20,7 @@ import { securityGate } from "../gates/security-gate.js";
 import { createRepositoryActivities } from "./activities/repository.js";
 import { createCrabboxActivityRuntime } from "./activities/crabbox.js";
 import { createAgentActivities } from "./activities/agent.js";
+import { createProjectionActivities } from "./activities/projection.js";
 import { createProductionArtifactBuilder } from "../security/production-builder.js";
 import { createBuildActivities } from "./activities/build.js";
 import { createDeployActivities, type DeploymentTarget } from "./activities/deploy.js";
@@ -34,10 +35,7 @@ const execFile = promisify(nodeExecFile);
 
 type Environment = Record<string, string | undefined>;
 
-export function memoryBankFromEnv(env: Environment = process.env): string {
-  if (!env.FACTORY_ORGANIZATION || !env.FACTORY_PROJECT) throw new Error("FACTORY_ORGANIZATION and FACTORY_PROJECT are required");
-  return projectBankId(env.FACTORY_ORGANIZATION, env.FACTORY_PROJECT);
-}
+export { memoryBankFromEnv } from "../integrations/hindsight-config.js";
 
 export function deploymentTargetFromEnv(env: Environment = process.env): DeploymentTarget {
   if (!env.FACTORY_DEPLOY_HOST || !env.FACTORY_HEALTH_URL) throw new Error("FACTORY_DEPLOY_HOST and FACTORY_HEALTH_URL are required");
@@ -75,20 +73,18 @@ export async function startWorkers(): Promise<void> {
   const agent = createAgentActivities({
     run: pi.run.bind(pi),
     memory: {
-      async buildContext({ run, role, value, mentalModels }) {
+      async buildContext({ run, role, value, mentalModels, operations }) {
         const input = run as FactoryWorkflowInput;
         const context = { factoryRunId: input.runId, ticketId: input.taskId, attemptId: input.attemptId ?? "1", phaseId: role, agentRole: role, organization: input.organization, project: input.project, repository: input.repository };
         const tags = memoryTags(context);
-        const bank = projectBankId(input.organization ?? "default", input.project ?? input.repository);
-        return buildMemoryContext({
-          recallProject: (request) => memory.recallProject(request),
-          reflectProject: (request) => memory.reflectProject(request),
-          getMentalModel: (bankId, modelId, options) => memory.getMentalModelForProject(bankId, modelId, options.tags),
-        }, { bank, role, query: JSON.stringify(value), mentalModels, tags });
+        const bank = resolveProjectBank(input);
+        return assembleAgentMemory(memory, { bank, role, query: JSON.stringify(value), mentalModels, tags, operations });
       },
-      async retainOutcome({ run, role, output }) {
+      async retainOutcome({ run, role, output, operations }) {
+        if (!operations.includes("retain")) return;
         const input = run as FactoryWorkflowInput;
-        await memory.retain(projectBankId(input.organization ?? "default", input.project ?? input.repository), output, { factoryRunId: input.runId, ticketId: input.taskId, attemptId: input.attemptId ?? "1", phaseId: role, agentRole: role, organization: input.organization, project: input.project, repository: input.repository });
+        const context = { factoryRunId: input.runId, ticketId: input.taskId, attemptId: input.attemptId ?? "1", phaseId: role, agentRole: role, organization: input.organization, project: input.project, repository: input.repository };
+        await memory.retain(resolveProjectBank(input), retainableAgentOutcome(role, output), context);
       },
     },
   });
@@ -110,6 +106,7 @@ export async function startWorkers(): Promise<void> {
   const health = new HealthChecker();
   const pool = createPool();
   const projection = createFactoryProjection(pool);
+  const projectionActivities = createProjectionActivities(projection);
   const hiddenScenariosRoot = process.env.FACTORY_HIDDEN_SCENARIOS_ROOT
     ?? join(process.cwd(), "factory/hidden-scenarios");
   const verifier = createVerifierActivities({ hiddenScenariosRoot });
@@ -130,6 +127,7 @@ export async function startWorkers(): Promise<void> {
     ...agent,
     ...build,
     ...deploy,
+    ...projectionActivities,
     async securityScan(input: { worktree: { path: string } }) {
       const lease = await workspace.create({ path: input.worktree.path, network: "none" });
       try {
@@ -149,8 +147,15 @@ export async function startWorkers(): Promise<void> {
         return { healthy: false, url: input.url };
       }
     },
-    async updateTaskStatus(input: { taskId: string; status: string; runId: string }) {
-      await projection.recordRun({ runId: input.runId, workflowId: `factory-${input.runId}`, taskId: input.taskId, status: input.status });
+    async updateTaskStatus(input: { taskId: string; status: string; runId: string; currentNode?: string; failureReason?: string }) {
+      await projection.recordRun({
+        runId: input.runId,
+        workflowId: `factory-${input.runId}`,
+        taskId: input.taskId,
+        status: input.status,
+        currentNode: input.currentNode,
+        failureReason: input.failureReason,
+      });
     },
     runBehavioralVerification: verifier.runBehavioralVerification,
     ...healthActivities,

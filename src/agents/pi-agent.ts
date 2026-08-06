@@ -1,10 +1,11 @@
 import { ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
-import type { AgentRunner } from "./agent-node.js";
+import type { AgentRunner } from "./runner.js";
 import { createContext7Tool } from "./tools.js";
 import { Context7Client } from "../integrations/research.js";
 import { join } from "node:path";
 import { createGondolinSession } from "./gondolin-session.js";
-import { profileForRole, ROLE_PROMPT_HINTS } from "./role-profiles.js";
+import { profileForRole } from "./role-profiles.js";
+import { toolsForRole } from "./tool-policy.js";
 import { parseCriticReport } from "../assurance/maintainability/findings.js";
 import { withSpan } from "../telemetry/bootstrap.js";
 import { recordToolCall } from "../telemetry/metrics.js";
@@ -12,17 +13,18 @@ import { recordToolCall } from "../telemetry/metrics.js";
 export class PiAgentRunner implements AgentRunner {
   async run(input: { role: string; prompt: string; cwd: string; tools: string[]; metadata: Record<string, string> }): Promise<{ text: string; sessionId: string }> {
     const profile = profileForRole(input.role);
+    const allowedTools = toolsForRole(input.role);
     const modelRuntime = await ModelRuntime.create({ modelsPath: process.env.PI_MODELS_PATH ?? join(input.cwd, "infra/pi/models.json") });
     const model = modelRuntime.getModel("litellm", "factory/default");
     const customTools = [
-      ...(profile.tools.includes("context7") ? [instrumentTool("context7", createContext7Tool(new Context7Client()))] : []),
+      ...(allowedTools.includes("context7") ? [instrumentTool("context7", createContext7Tool(new Context7Client()))] : []),
     ];
     const { session, close } = await createGondolinSession({
       cwd: input.cwd,
       model,
       modelRuntime,
       sessionManager: SessionManager.inMemory(input.cwd),
-      tools: [...profile.tools],
+      tools: allowedTools,
       customTools,
       thinkingLevel: profile.thinkingLevel,
       role: input.role,
@@ -32,10 +34,7 @@ export class PiAgentRunner implements AgentRunner {
     session.subscribe((event) => {
       if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") text += event.assistantMessageEvent.delta;
     });
-    const roleHint = ROLE_PROMPT_HINTS[input.role] ?? "";
-    const prompt = roleHint
-      ? `${roleHint}\n\n${input.prompt}\nCorrelation metadata: ${JSON.stringify(input.metadata)}`
-      : `${input.prompt}\nCorrelation metadata: ${JSON.stringify(input.metadata)}`;
+    const prompt = `${input.prompt}\nCorrelation metadata: ${JSON.stringify(input.metadata)}`;
     await withSpan("factory.agent.turn", {
       "factory.agent.role": input.role,
       ...Object.fromEntries(Object.entries(input.metadata).map(([key, value]) => [`factory.${key}`, value])),

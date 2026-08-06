@@ -15,6 +15,8 @@ export function createProductionApi(input: { store: ApiStore; workflowClient: Wo
         workflow: "feature",
         deploymentProfile: "staging",
         sandboxProfile: "crabbox",
+        organization: process.env.FACTORY_ORGANIZATION,
+        project: process.env.FACTORY_PROJECT,
       };
       const intakeSpan = startTaskIntakeSpan(extractCorrelationFromRun(workflow));
       intakeSpan.setAttributes(correlationAttributes(extractCorrelationFromRun(workflow)));

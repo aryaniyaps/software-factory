@@ -20,4 +20,28 @@ describe("memory-aware agent Activities", () => {
     await activities.runAgent({ run: { runId: "run", taskId: "task", repository: "/repo", baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "crabbox" }, worktree: { path: "/worktree", branch: "branch" }, role: "plan", input: {} });
     expect(calls).toEqual(["pi", "retain"]);
   });
+
+  it("requests only the role mental models declared in the profile", async () => {
+    const requestedModels: string[] = [];
+    const activities = createAgentActivities({
+      run: async () => ({ sessionId: "session", text: JSON.stringify({ schemaVersion: "agent-output.v1", role: "implement", status: "succeeded", summary: "done", evidenceRefs: ["ev-1"], data: {} }) }),
+      memory: {
+        buildContext: async ({ mentalModels, operations }) => {
+          requestedModels.push(...mentalModels);
+          expect(operations).toEqual(["recall", "retain"]);
+          return "memory";
+        },
+        retainOutcome: async ({ operations }) => {
+          expect(operations).toEqual(["recall", "retain"]);
+        },
+      },
+    });
+    await activities.runAgent({
+      run: { runId: "run", taskId: "task", repository: "/repo", baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "crabbox" },
+      worktree: { path: "/worktree", branch: "branch" },
+      role: "implement",
+      input: {},
+    });
+    expect(requestedModels).toEqual(["repository-conventions", "test-failures"]);
+  });
 });

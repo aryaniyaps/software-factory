@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { profileForRole, roleLoaderOptions } from "../../src/agents/role-profiles.js";
+import { toolsForRole } from "../../src/agents/tool-policy.js";
 
 describe("Pi role profiles", () => {
   it("defines distinct capabilities for every workflow role", () => {
-    expect(profileForRole("scout").tools).toContain("web_search");
+    expect(toolsForRole("scout")).toContain("web_search");
     expect(profileForRole("implement").skills).toContain("src/agents/skills/engineering/implement/SKILL.md");
     expect(profileForRole("repair").skills).toContain("src/agents/skills/engineering/diagnosing-bugs/SKILL.md");
     expect(profileForRole("review").skills).toContain("src/agents/skills/engineering/code-review/SKILL.md");
-    expect(profileForRole("behavior_verifier").tools).not.toContain("write");
-    expect(profileForRole("behavior_verifier").tools).not.toContain("edit");
+    expect(toolsForRole("maintainability_critic")).not.toContain("write");
+    expect(toolsForRole("maintainability_critic")).not.toContain("edit");
     expect(profileForRole("plan").mentalModels).toContain("architecture");
     expect(() => profileForRole("unknown")).toThrow("unknown Pi role");
   });

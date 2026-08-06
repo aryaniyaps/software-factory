@@ -4,7 +4,7 @@ import { createProductionApi } from "./api/production-api.js";
 import { createEvidenceService } from "./api/evidence-service.js";
 import { createOperationsService } from "./api/operations-service.js";
 import { createPool } from "./db/database.js";
-import { PostgresApplicationStore } from "./db/application-store.js";
+import { createFactoryRunStore } from "./db/factory-run-store.js";
 import { createEvidenceReadModel } from "./db/evidence-read-model.js";
 import { createTemporalClient } from "./temporal/client.js";
 import { loadFactoryConfig } from "./config.js";
@@ -14,10 +14,8 @@ export async function startServer(): Promise<void> {
   const config = loadFactoryConfig();
   const pool = createPool();
   await pool.query(await readFile(new URL("./db/schema.sql", import.meta.url), "utf8"));
-  await pool.query(await readFile(new URL("./db/migrations/002_evidence_spine.sql", import.meta.url), "utf8"));
-  await pool.query(await readFile(new URL("./db/migrations/003_probe_runs.sql", import.meta.url), "utf8"));
   const temporal = await createTemporalClient();
-  const store = new PostgresApplicationStore(pool);
+  const store = createFactoryRunStore(pool);
   const evidenceService = createEvidenceService({
     readModel: createEvidenceReadModel(pool),
     config: {

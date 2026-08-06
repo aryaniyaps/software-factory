@@ -78,6 +78,16 @@ export interface FactoryProjection {
   }): Promise<void>;
   getFeedbackTraceability(feedbackId: string): Promise<FeedbackTraceability | null>;
   getRun(runId: string): Promise<FactoryRunRow | null>;
+  recordNodeAttempt(input: {
+    runId: string;
+    attemptId: string;
+    node: string;
+    status: string;
+    startedAt: string;
+    completedAt?: string;
+    failureCode?: string;
+    evidenceManifestHash?: string;
+  }): Promise<void>;
 }
 
 export function createFactoryProjection(db: Queryable): FactoryProjection {
@@ -369,6 +379,29 @@ export function createFactoryProjection(db: Queryable): FactoryProjection {
         currentNode: row.current_node ?? undefined,
         failureReason: row.failure_reason ?? undefined,
       };
+    },
+
+    async recordNodeAttempt(input) {
+      await db.query(
+        `INSERT INTO factory_node_attempts (run_id, attempt_id, node, status, started_at, completed_at, failure_code, evidence_manifest_hash)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (run_id, attempt_id) DO UPDATE SET
+          node = EXCLUDED.node,
+          status = EXCLUDED.status,
+          completed_at = EXCLUDED.completed_at,
+          failure_code = EXCLUDED.failure_code,
+          evidence_manifest_hash = EXCLUDED.evidence_manifest_hash`,
+        [
+          input.runId,
+          input.attemptId,
+          input.node,
+          input.status,
+          input.startedAt,
+          input.completedAt ?? null,
+          input.failureCode ?? null,
+          input.evidenceManifestHash ?? null,
+        ],
+      );
     },
   };
 }
