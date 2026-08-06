@@ -64,7 +64,8 @@ export async function loadProductGraph(factoryRoot: string): Promise<ProductGrap
     const dirPath = path.join(factoryRoot, dirName);
     if (!(await exists(dirPath))) continue;
     for (const fileName of await listFiles(dirPath, ".yaml", ".yml")) {
-      nodes.push(await loadYamlNode(path.join(dirPath, fileName), kind));
+      const node = await loadYamlNode(path.join(dirPath, fileName), kind);
+      if (node !== null) nodes.push(node);
     }
   }
 
@@ -124,9 +125,15 @@ async function loadMarkdownNode(filePath: string, kind: GraphNodeKind): Promise<
   return buildNode(filePath, kind, frontmatter);
 }
 
-async function loadYamlNode(filePath: string, kind: GraphNodeKind): Promise<GraphNode> {
+async function loadYamlNode(filePath: string, kind: GraphNodeKind): Promise<GraphNode | null> {
   const frontmatter = parseYaml(await readFile(filePath, "utf8")) as Record<string, unknown>;
+  if (isPolicyDocument(frontmatter)) return null;
   return buildNode(filePath, kind, frontmatter);
+}
+
+function isPolicyDocument(record: Record<string, unknown>): boolean {
+  const schemaVersion = record.schemaVersion;
+  return typeof schemaVersion === "string" && schemaVersion.endsWith("-policy.v1");
 }
 
 function buildNode(filePath: string, kind: GraphNodeKind, frontmatter: Record<string, unknown>): GraphNode {
