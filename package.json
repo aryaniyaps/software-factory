@@ -27,6 +27,7 @@
     "typebox": "latest"
   },
   "devDependencies": {
+    "@temporalio/testing": "^1.22.0",
     "@types/koa": "^3.0.3",
     "@types/koa__router": "^12.0.5",
     "@types/koa-bodyparser": "^4.3.13",
