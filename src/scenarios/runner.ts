@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import type { ProcessOutcome, ProcessRunner, ProcessSpec } from "../assurance/fitness/process-runner.js";
+import type { TwinRegistry } from "../simulation/registry.js";
+import { redactFixture, stableSerializeFixture } from "../simulation/twin.js";
 import {
   buildScenarioRunRecord,
   buildSuiteResult,
@@ -27,6 +29,7 @@ export interface ScenarioRunnerDependencies {
   readonly timeoutMs?: number;
   readonly maxOutputBytes?: number;
   readonly adapters?: readonly ScenarioAdapter[];
+  readonly twinRegistry?: TwinRegistry;
   readonly now?: () => string;
 }
 
@@ -153,6 +156,10 @@ export class ScenarioRunner {
     suite: ScenarioSuiteResult;
     records: ReturnType<typeof buildScenarioRunRecord>[];
   }> {
+    if (this.deps.twinRegistry) {
+      this.deps.twinRegistry.reset();
+    }
+
     const runs: ReturnType<typeof buildScenarioRunRecord>[] = [];
     const evidenceRefs: string[] = [];
     for (const scenario of input.scenarios) {
@@ -161,6 +168,11 @@ export class ScenarioRunner {
       evidenceRefs.push(...trajectoryKeys);
       evidenceRefs.push(`scenario-run:${record.scenarioId}:${record.attemptId}`);
     }
+
+    if (this.deps.twinRegistry) {
+      evidenceRefs.push(...buildTwinEvidenceRefs(this.deps.twinRegistry));
+    }
+
     return {
       records: runs,
       suite: buildSuiteResult(runs, evidenceRefs, input.policyVersion ?? SCENARIO_POLICY_VERSION),
@@ -174,6 +186,14 @@ export function trajectoryKey(trajectory: ScenarioTrajectory): string {
 
 export function trajectoryBodyHash(trajectory: ScenarioTrajectory): string {
   return createHash("sha256").update(JSON.stringify(trajectory)).digest("hex");
+}
+
+export function buildTwinEvidenceRefs(registry: TwinRegistry): string[] {
+  return registry.list().map((twin) => {
+    const fixture = redactFixture(twin.exportFixture());
+    const hash = createHash("sha256").update(stableSerializeFixture(fixture)).digest("hex");
+    return `twin-fixture:${twin.id}:${twin.version}:${hash}`;
+  });
 }
 
 export type MockProcessHandler = (spec: ProcessSpec) => Promise<ProcessOutcome>;
