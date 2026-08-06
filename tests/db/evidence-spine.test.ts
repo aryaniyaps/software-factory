@@ -28,6 +28,12 @@ describe("evidence spine migration", () => {
     }
     expect(migration).not.toMatch(/DROP TABLE/i);
   });
+
+  it("defines probe run projection table for operations API", async () => {
+    const migration = await readFile(new URL("../../src/db/migrations/003_probe_runs.sql", import.meta.url), "utf8");
+    expect(migration).toContain("probe_runs");
+    expect(migration).not.toMatch(/DROP TABLE/i);
+  });
 });
 
 describe("evidence store projection", () => {

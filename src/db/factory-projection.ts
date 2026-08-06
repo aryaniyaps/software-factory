@@ -55,6 +55,14 @@ export interface FactoryProjection {
     startedAt: string;
     completedAt?: string;
   }): Promise<void>;
+  recordProbeRun(input: {
+    runId: string;
+    probeId: string;
+    attemptId: string;
+    status: string;
+    record: unknown;
+    recordedAt?: string;
+  }): Promise<void>;
   listEvidenceItemIds(runId: string): Promise<string[]>;
   listGateDecisionKeys(runId: string): Promise<string[]>;
   listScenarioRunKeys(runId: string): Promise<string[]>;
@@ -200,6 +208,19 @@ export function createFactoryProjection(db: Queryable): FactoryProjection {
           input.startedAt,
           input.completedAt ?? null,
         ],
+      );
+    },
+
+    async recordProbeRun(input) {
+      const recordedAt = input.recordedAt ?? new Date().toISOString();
+      await db.query(
+        `INSERT INTO probe_runs (run_id, probe_id, attempt_id, status, record, recorded_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (run_id, probe_id, attempt_id) DO UPDATE SET
+          status = EXCLUDED.status,
+          record = EXCLUDED.record,
+          recorded_at = EXCLUDED.recorded_at`,
+        [input.runId, input.probeId, input.attemptId, input.status, input.record, recordedAt],
       );
     },
 

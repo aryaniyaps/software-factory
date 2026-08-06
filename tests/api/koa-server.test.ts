@@ -10,7 +10,7 @@ const store: ApiStore = {
 
 describe("Koa API", () => {
   it("returns a JSON 400 for incomplete task requests", async () => {
-    const server = createServer(createApiApp(store).callback());
+    const server = createServer(createApiApp({ store }).callback());
     await new Promise<void>((resolve) => server.listen(0, resolve));
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("server did not bind");
@@ -25,7 +25,7 @@ describe("Koa API", () => {
   });
 
   it("exposes an application callback without starting a server", () => {
-    const app = createApiApp(store);
+    const app = createApiApp({ store });
     expect(typeof app.callback()).toBe("function");
   });
 });

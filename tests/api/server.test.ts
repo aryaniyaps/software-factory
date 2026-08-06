@@ -14,7 +14,7 @@ class FakeApiStore implements ApiStore {
 
 describe("factory API", () => {
   it("creates and reads a task", async () => {
-    const server = createApiServer(new FakeApiStore());
+    const server = createApiServer({ store: new FakeApiStore() });
     await new Promise<void>((resolve) => server.listen(0, resolve));
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("server did not bind");

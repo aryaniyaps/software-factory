@@ -47,6 +47,7 @@ const verifierActivity = proxyActivities<typeof activities>({ ...activityOptions
 
 export const cancelFactorySignal = defineSignal("cancelFactory");
 export const rerunNodeSignal = defineSignal<[FactoryNodeName]>("rerunNode");
+export const rollbackReleaseSignal = defineSignal("rollbackRelease");
 export const factoryStatusQuery = defineQuery<FactoryWorkflowState>("factoryStatus");
 
 function agentSucceeded(output: { status: "succeeded" | "failed" | "abstained"; summary: string }): boolean {
@@ -74,8 +75,10 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
   };
 
   let cancelled = false;
+  let pendingRollback = false;
   let pendingRerun: FactoryNodeName | undefined;
   setHandler(cancelFactorySignal, () => { cancelled = true; });
+  setHandler(rollbackReleaseSignal, () => { pendingRollback = true; });
   setHandler(rerunNodeSignal, (node) => { pendingRerun = node; });
   setHandler(factoryStatusQuery, (): FactoryWorkflowState => ({
     schemaVersion: state.schemaVersion,
@@ -93,6 +96,11 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     if (cancelled) {
       state.status = "cancelled";
       throw ApplicationFailure.nonRetryable("factory cancelled", "Cancelled");
+    }
+    if (pendingRollback) {
+      state.status = "rolled_back";
+      state.failedNode = state.currentNode;
+      throw ApplicationFailure.nonRetryable("release rollback requested", "RollbackRequested");
     }
   };
 
@@ -442,6 +450,11 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
       if (activeWorktreePath) await controlActivity.removeWorktree(activeWorktreePath);
       await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "cancelled", runId: input.runId });
       throw ApplicationFailure.nonRetryable("factory cancelled", "Cancelled");
+    }
+    if (state.status === "rolled_back") {
+      if (activeWorktreePath) await controlActivity.removeWorktree(activeWorktreePath);
+      await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "rolled_back", runId: input.runId });
+      throw ApplicationFailure.nonRetryable("release rollback requested", "RollbackRequested");
     }
     throw error;
   }
