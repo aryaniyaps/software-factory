@@ -1,5 +1,7 @@
 import type { ApiStore } from "./server.js";
 import { startFactoryWorkflow, type FactoryWorkflowInput, type WorkflowClientLike } from "../temporal/client.js";
+import { correlationAttributes, extractCorrelationFromRun } from "../telemetry/attributes.js";
+import { runInSpan, startTaskIntakeSpan } from "../telemetry/bootstrap.js";
 
 export function createProductionApi(input: { store: ApiStore; workflowClient: WorkflowClientLike }): ApiStore {
   return {
@@ -14,7 +16,13 @@ export function createProductionApi(input: { store: ApiStore; workflowClient: Wo
         deploymentProfile: "staging",
         sandboxProfile: "crabbox",
       };
-      await startFactoryWorkflow(input.workflowClient, workflow);
+      const intakeSpan = startTaskIntakeSpan(extractCorrelationFromRun(workflow));
+      intakeSpan.setAttributes(correlationAttributes(extractCorrelationFromRun(workflow)));
+      try {
+        await runInSpan(intakeSpan, async () => startFactoryWorkflow(input.workflowClient, workflow));
+      } finally {
+        intakeSpan.end();
+      }
       return runId;
     },
     getRun: (id) => input.store.getRun(id),
