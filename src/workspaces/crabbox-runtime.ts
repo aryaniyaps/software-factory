@@ -72,7 +72,7 @@ export function createCrabboxRuntime(
   };
 }
 
-export const officialCrabboxRuntime = createCrabboxRuntime({
+export const officialCrabboxCommandRunner: CrabboxCommandRunner = {
   async run(file, args, options = {}) {
     try {
       const result = await execFile(file, args, { timeout: options.timeoutMs, maxBuffer: 4 * 1024 * 1024 });
@@ -86,4 +86,6 @@ export const officialCrabboxRuntime = createCrabboxRuntime({
       };
     }
   },
-});
+};
+
+export const officialCrabboxRuntime = createCrabboxRuntime(officialCrabboxCommandRunner);

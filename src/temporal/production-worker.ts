@@ -12,6 +12,7 @@ import { createFactoryProjection } from "../db/factory-projection.js";
 import { PiAgentRunner } from "../agents/pi-agent.js";
 import { CrabboxWorkspaceProvider } from "../workspaces/crabbox-provider.js";
 import { officialCrabboxRuntime } from "../workspaces/crabbox-runtime.js";
+import { assertCrabboxAvailable } from "../workspaces/crabbox-doctor.js";
 import { GitWorktreeManager } from "../workspaces/worktree-manager.js";
 import { SshExecutor } from "../deploy/ssh-executor.js";
 import { HealthChecker } from "../deploy/health-checker.js";
@@ -54,6 +55,7 @@ async function prepareRepository(repository: string): Promise<{ repository: stri
 }
 
 export async function startWorkers(): Promise<void> {
+  await assertCrabboxAvailable();
   const root = process.env.WORKTREE_ROOT ?? "/tmp/software-factory-worktrees";
   const workspace = new CrabboxWorkspaceProvider(officialCrabboxRuntime);
   const crabbox = createCrabboxActivityRuntime(workspace);
@@ -91,7 +93,7 @@ export async function startWorkers(): Promise<void> {
         const image = process.env.FACTORY_IMAGE;
         const digest = process.env.FACTORY_ARTIFACT_DIGEST;
         if (!image || !digest) throw new Error("FACTORY_IMAGE and FACTORY_ARTIFACT_DIGEST are required");
-        const result = await vm.exec("buildctl-daemonless.sh", ["build", "--frontend", "dockerfile.v0", "--local", "context=/workspace", "--local", "dockerfile=/workspace", "--output", `type=image,name=${image},push=true`], { timeoutMs: 60 * 60_000 });
+        const result = await vm.exec("buildctl-daemonless.sh", ["build", "--frontend", "dockerfile.v0", "--local", "context=/work/crabbox", "--local", "dockerfile=/work/crabbox", "--output", `type=image,name=${image},push=true`], { timeoutMs: 60 * 60_000 });
         if (result.exitCode !== 0) throw new Error(`isolated build failed: ${result.stderr}`);
         return { image, digest };
       },
