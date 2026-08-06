@@ -1,0 +1,13 @@
+schemaVersion: scenario.v1
+id: SCN-BEHAVIOR-API
+title: Feature marker must exist on candidate only
+type: api
+mode: behavior
+acceptance:
+  - AC-FEATURE-MARKER
+adapter:
+  command: test
+  args: ["-f", "feature.marker"]
+repeats: 1
+minSatisfaction: 0.95
+maxVariance: 0.05

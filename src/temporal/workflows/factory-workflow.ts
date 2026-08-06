@@ -39,6 +39,7 @@ const controlActivity = proxyActivities<typeof activities>({ ...activityOptions,
 const agentActivity = proxyActivities<typeof activities>({ ...activityOptions, taskQueue: TASK_QUEUES.agent });
 const buildActivity = proxyActivities<typeof activities>({ ...activityOptions, taskQueue: TASK_QUEUES.build });
 const deployActivity = proxyActivities<typeof activities>({ ...activityOptions, taskQueue: TASK_QUEUES.deploy });
+const verifierActivity = proxyActivities<typeof activities>({ ...activityOptions, taskQueue: TASK_QUEUES.verifier });
 
 export const cancelFactorySignal = defineSignal("cancelFactory");
 export const rerunNodeSignal = defineSignal<[FactoryNodeName]>("rerunNode");
@@ -127,28 +128,30 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     throw ApplicationFailure.nonRetryable(`factory failed at ${failedNode}`, "Failed", { failedNode });
   };
 
-  let activeWorktreePath = continuation?.worktree?.path;
+    let activeWorktreePath = continuation?.worktree?.path;
+    let baselineRevision = "HEAD";
 
-  try {
-    let worktree = continuation?.worktree;
-    let previous: object = continuation?.agentOutput ?? {};
+    try {
+      let worktree = continuation?.worktree;
+      let previous: object = continuation?.agentOutput ?? {};
 
-    if (!worktree) {
-      state.currentNode = "prepare_repository";
-      const prepAttempt = await runNodeAttempt({
-        runId: input.runId,
-        node: "prepare_repository",
-        attemptNumber: 1,
-        budget: state.budget,
-        execute: () => controlActivity.prepareRepository(input),
-      });
-      state.budget = prepAttempt.budget;
-      state.nodeAttempts = recordAttempt(state.nodeAttempts, prepAttempt.attemptRef);
-      if (prepAttempt.result.status === "failed") {
-        return await failRun("prepare_repository");
-      }
-      const preparation = prepAttempt.result.output!;
-      checkCancelled();
+      if (!worktree) {
+        state.currentNode = "prepare_repository";
+        const prepAttempt = await runNodeAttempt({
+          runId: input.runId,
+          node: "prepare_repository",
+          attemptNumber: 1,
+          budget: state.budget,
+          execute: () => controlActivity.prepareRepository(input),
+        });
+        state.budget = prepAttempt.budget;
+        state.nodeAttempts = recordAttempt(state.nodeAttempts, prepAttempt.attemptRef);
+        if (prepAttempt.result.status === "failed") {
+          return await failRun("prepare_repository");
+        }
+        const preparation = prepAttempt.result.output!;
+        baselineRevision = preparation.revision;
+        checkCancelled();
 
       state.currentNode = "create_worktree";
       const worktreeAttempt = await runNodeAttempt({
@@ -247,6 +250,42 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     if (repairLoop.abstained) return await abstain("deterministic_checks", worktree.path);
     if (!repairLoop.passed) return await failRun("deterministic_checks", worktree.path);
     if (repairLoop.repairOutput) previous = repairLoop.repairOutput.data;
+    checkCancelled();
+    await maybeContinueAsNew(worktree, previous);
+
+    state.currentNode = "behavioral_verify";
+    const behavioralAttempt = await runNodeAttempt({
+      runId: input.runId,
+      node: "behavioral_verify",
+      attemptNumber: 1,
+      budget: state.budget,
+      execute: async () => {
+        const verification = await verifierActivity.runBehavioralVerification({
+          run: input,
+          worktree: worktree!,
+          baselineRevision,
+        });
+        if (verification.decision === "abstain") {
+          const error = new Error("behavioral verification abstained");
+          error.name = "BudgetExhausted";
+          throw error;
+        }
+        if (!verification.passed) {
+          const error = new Error(`behavioral verification failed: ${verification.decision}`);
+          error.name = "PolicyViolation";
+          throw error;
+        }
+        return verification;
+      },
+    });
+    state.budget = behavioralAttempt.budget;
+    state.nodeAttempts = recordAttempt(state.nodeAttempts, behavioralAttempt.attemptRef);
+    if (behavioralAttempt.result.status === "failed") {
+      if (behavioralAttempt.result.failure?.type === "budget") {
+        return await abstain("behavioral_verify", worktree.path);
+      }
+      return await failRun("behavioral_verify", worktree.path);
+    }
     checkCancelled();
     await maybeContinueAsNew(worktree, previous);
 

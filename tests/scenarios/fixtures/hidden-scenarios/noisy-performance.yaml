@@ -1,0 +1,13 @@
+schemaVersion: scenario.v1
+id: SCN-NOISY-PERF
+title: Flaky performance oracle
+type: performance
+mode: behavior
+acceptance:
+  - AC-NOISY
+adapter:
+  command: sh
+  args: ["-c", "exit $((RANDOM % 2))"]
+repeats: 5
+minSatisfaction: 0.95
+maxVariance: 0.01

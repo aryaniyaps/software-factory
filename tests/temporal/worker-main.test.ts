@@ -10,7 +10,7 @@ describe("production Temporal workers", () => {
       activities: {},
       createWorker: async (options) => { queues.push(options.taskQueue ?? ""); return { run: async () => {} }; },
     });
-    expect(queues).toEqual([TASK_QUEUES.control, TASK_QUEUES.agent, TASK_QUEUES.build, TASK_QUEUES.deploy]);
-    expect(workers).toHaveLength(4);
+    expect(queues).toEqual([TASK_QUEUES.control, TASK_QUEUES.agent, TASK_QUEUES.build, TASK_QUEUES.deploy, TASK_QUEUES.verifier]);
+    expect(workers).toHaveLength(5);
   });
 });

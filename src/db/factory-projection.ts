@@ -43,8 +43,20 @@ export interface FactoryProjection {
     decidedAt?: string;
   }): Promise<void>;
   recordEvidenceManifest(input: { runId: string; manifest: EvidenceManifest; hash: string }): Promise<void>;
+  recordScenarioRun(input: {
+    runId: string;
+    scenarioId: string;
+    attemptId: string;
+    status: string;
+    satisfaction?: number;
+    trajectoryUri?: string;
+    trajectorySha256?: string;
+    startedAt: string;
+    completedAt?: string;
+  }): Promise<void>;
   listEvidenceItemIds(runId: string): Promise<string[]>;
   listGateDecisionKeys(runId: string): Promise<string[]>;
+  listScenarioRunKeys(runId: string): Promise<string[]>;
   getRun(runId: string): Promise<FactoryRunRow | null>;
 }
 
@@ -155,6 +167,30 @@ export function createFactoryProjection(db: Queryable): FactoryProjection {
       );
     },
 
+    async recordScenarioRun(input) {
+      await db.query(
+        `INSERT INTO scenario_runs (run_id, scenario_id, attempt_id, status, satisfaction, trajectory_uri, trajectory_sha256, started_at, completed_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ON CONFLICT (run_id, scenario_id, attempt_id) DO UPDATE SET
+          status = EXCLUDED.status,
+          satisfaction = EXCLUDED.satisfaction,
+          trajectory_uri = EXCLUDED.trajectory_uri,
+          trajectory_sha256 = EXCLUDED.trajectory_sha256,
+          completed_at = EXCLUDED.completed_at`,
+        [
+          input.runId,
+          input.scenarioId,
+          input.attemptId,
+          input.status,
+          input.satisfaction ?? null,
+          input.trajectoryUri ?? null,
+          input.trajectorySha256 ?? null,
+          input.startedAt,
+          input.completedAt ?? null,
+        ],
+      );
+    },
+
     async listEvidenceItemIds(runId) {
       const result = await db.query(
         `SELECT id FROM evidence_items WHERE run_id = $1 ORDER BY created_at, id`,
@@ -171,6 +207,17 @@ export function createFactoryProjection(db: Queryable): FactoryProjection {
       return result.rows.map((row) => {
         const entry = row as { gate_id: string; decided_at: string };
         return `${entry.gate_id}@${entry.decided_at}`;
+      });
+    },
+
+    async listScenarioRunKeys(runId) {
+      const result = await db.query(
+        `SELECT scenario_id, attempt_id FROM scenario_runs WHERE run_id = $1 ORDER BY started_at, scenario_id, attempt_id`,
+        [runId],
+      );
+      return result.rows.map((row) => {
+        const entry = row as { scenario_id: string; attempt_id: string };
+        return `${entry.scenario_id}@${entry.attempt_id}`;
       });
     },
 

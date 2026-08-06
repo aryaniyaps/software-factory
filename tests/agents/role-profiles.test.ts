@@ -7,6 +7,8 @@ describe("Pi role profiles", () => {
     expect(profileForRole("implement").skills).toContain("src/agents/skills/engineering/implement/SKILL.md");
     expect(profileForRole("repair").skills).toContain("src/agents/skills/engineering/diagnosing-bugs/SKILL.md");
     expect(profileForRole("review").skills).toContain("src/agents/skills/engineering/code-review/SKILL.md");
+    expect(profileForRole("behavior_verifier").tools).not.toContain("write");
+    expect(profileForRole("behavior_verifier").tools).not.toContain("edit");
     expect(profileForRole("plan").mentalModels).toContain("architecture");
     expect(() => profileForRole("unknown")).toThrow("unknown Pi role");
   });

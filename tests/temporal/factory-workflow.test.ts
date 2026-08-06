@@ -88,6 +88,22 @@ function createActivities(options: MockOptions = {}) {
       calls.push("deterministic_checks");
       return checks.shift() ?? { passed: true, output: "ok" };
     },
+    runBehavioralVerification: async () => {
+      calls.push("behavioral_verify");
+      return {
+        passed: true,
+        decision: "pass" as const,
+        suite: {
+          schemaVersion: "scenario-suite.v1" as const,
+          decision: "pass" as const,
+          policyVersion: "scenario-verifier.v1",
+          runs: [],
+          distributions: [],
+          evidenceRefs: ["ev-scn-1"],
+        },
+        evidenceRefs: ["ev-scn-1"],
+      };
+    },
     buildArtifact: async () => {
       calls.push("build_artifact");
       return { image: "app", digest: "sha256:abc" };
@@ -155,6 +171,7 @@ describe("factory workflow topology", () => {
       "implement",
       "deterministic_checks",
       "repair",
+      "behavioral_verify",
       "review",
       "build_artifact",
       "deploy",

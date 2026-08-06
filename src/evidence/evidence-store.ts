@@ -86,12 +86,14 @@ export function createEvidenceStore(deps: EvidenceStoreDependencies): EvidenceSt
     async rebuildManifest(runId, context = {}) {
       const evidenceIds = await projection.listEvidenceItemIds(runId);
       const gateKeys = await projection.listGateDecisionKeys(runId);
+      const scenarioRunKeys = await projection.listScenarioRunKeys(runId);
       const run = await projection.getRun(runId);
       const manifest = buildEvidenceManifest({
         runId,
         taskId: run?.taskId,
         evidenceItemIds: evidenceIds,
         gateDecisionKeys: gateKeys,
+        scenarioRunKeys,
         ...context,
       });
       const hash = computeManifestHash(manifest);

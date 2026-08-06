@@ -69,6 +69,15 @@ export const ROLE_PROFILES: Record<string, RoleProfile> = {
     webSearch: false,
     thinkingLevel: "high",
   },
+  behavior_verifier: {
+    skills: ["src/agents/skills/engineering/tdd/SKILL.md"],
+    tools: ["read", "grep", "find", "ls"],
+    extensions: ["context-mode"],
+    mentalModels: ["test-failures", "deployment-safety"],
+    hindsightOperations: ["recall"],
+    webSearch: false,
+    thinkingLevel: "medium",
+  },
 };
 
 export const ROLE_PROMPT_HINTS: Partial<Record<string, string>> = {
