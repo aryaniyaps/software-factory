@@ -24,6 +24,7 @@ import { createBuildActivities } from "./activities/build.js";
 import { createDeployActivities, type DeploymentTarget } from "./activities/deploy.js";
 import type { FactoryWorkflowInput } from "./client.js";
 import { createProductionWorkers } from "./worker-main.js";
+import { instrumentActivities } from "../telemetry/bootstrap.js";
 
 const execFile = promisify(nodeExecFile);
 
@@ -108,7 +109,7 @@ export async function startWorkers(): Promise<void> {
   const health = new HealthChecker();
   const pool = createPool();
   const projection = createFactoryProjection(pool);
-  const activities = {
+  const activities = instrumentActivities({
     ...repository,
     ...agent,
     ...build,
@@ -135,7 +136,7 @@ export async function startWorkers(): Promise<void> {
     async updateTaskStatus(input: { taskId: string; status: string; runId: string }) {
       await projection.recordRun({ runId: input.runId, workflowId: `factory-${input.runId}`, taskId: input.taskId, status: input.status });
     },
-  };
+  });
   const workflowsPath = fileURLToPath(new URL("./workflows", import.meta.url));
   await Promise.all((await createProductionWorkers({ workflowsPath, activities })).map((worker) => worker.run()));
 }
