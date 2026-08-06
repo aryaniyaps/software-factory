@@ -5,7 +5,7 @@ describe("agent Activities", () => {
   it("passes role policy and correlation metadata to Pi", async () => {
     let received: Record<string, unknown> | undefined;
     const activities = createAgentActivities({
-      run: async (input) => { received = input; return { sessionId: "session-1", text: "agent output" }; },
+      run: async (input) => { received = input; return { sessionId: "session-1", text: JSON.stringify({ schemaVersion: "agent-output.v1", role: "implement", status: "succeeded", summary: "agent output", evidenceRefs: ["ev-1"], data: {} }) }; },
     });
     const result = await activities.runAgent({
       run: { runId: "run", taskId: "task", repository: "/repo", baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "crabbox" },
@@ -13,7 +13,7 @@ describe("agent Activities", () => {
       role: "implement",
       input: { plan: "do it" },
     });
-    expect(result).toEqual({ sessionId: "session-1", output: "agent output" });
+    expect(result).toMatchObject({ sessionId: "session-1", output: { role: "implement", status: "succeeded" } });
     expect(received).toMatchObject({ role: "implement", cwd: "/worktree", metadata: { factoryRunId: "run", ticketId: "task", phaseId: "implement" } });
   });
 });

@@ -1,26 +1,7 @@
 import type { FactoryWorkflowInput } from "../client.js";
+import { FACTORY_NODE_NAMES, type FactoryRunState } from "../../contracts/nodes.js";
 
-export interface FactoryWorkflowState {
-  runId: string;
-  status: "running" | "succeeded" | "failed" | "cancelled";
-  completedNodes: string[];
-  failedNode?: string;
-}
-
-export const FACTORY_NODE_NAMES = [
-  "prepare_repository",
-  "create_worktree",
-  "security_scan",
-  "scout",
-  "plan",
-  "implement",
-  "deterministic_checks",
-  "repair",
-  "review",
-  "build_artifact",
-  "deploy",
-  "health_check",
-] as const;
-
-export type FactoryNodeName = (typeof FACTORY_NODE_NAMES)[number];
+export type FactoryWorkflowState = FactoryRunState;
+export { FACTORY_NODE_NAMES };
+export type { FactoryNodeName } from "../../contracts/nodes.js";
 export type { FactoryWorkflowInput };

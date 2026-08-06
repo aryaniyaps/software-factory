@@ -3,6 +3,7 @@ import { toolsForRole } from "../../agents/tool-policy.js";
 import type { WorkspaceProvider } from "../../workspaces/provider.js";
 import { securityGate } from "../../gates/security-gate.js";
 import type { FactoryActivities } from "./types.js";
+import { parseAgentOutput } from "../../contracts/nodes.js";
 
 export interface ProductionActivityDependencies {
   prepareRepository: FactoryActivities["prepareRepository"];
@@ -43,7 +44,7 @@ export function createProductionActivities(dependencies: ProductionActivityDepen
           worktreeId: input.worktree.path,
         },
       });
-      return { sessionId: result.sessionId, output: result.text };
+      return { sessionId: result.sessionId, output: parseAgentOutput(result.text) };
     },
     runChecks: async (input) => {
       const workspace = await dependencies.workspace.create({ path: input.worktree.path, network: "restricted" });
