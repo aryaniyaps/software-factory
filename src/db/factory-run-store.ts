@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type { Pool } from "pg";
+import { asc, eq } from "drizzle-orm";
 import type { ApiStore } from "../api/server.js";
+import type { Database } from "./database.js";
 import { createFactoryProjection } from "./factory-projection.js";
+import { factoryEvents } from "./schema.js";
 
-export function createFactoryRunStore(pool: Pool): ApiStore {
-  const projection = createFactoryProjection(pool);
+export function createFactoryRunStore(db: Database): ApiStore {
+  const projection = createFactoryProjection(db);
 
   return {
     async createTask(input: { repository: string; title: string; description: string }) {
@@ -23,19 +25,30 @@ export function createFactoryRunStore(pool: Pool): ApiStore {
     async getRun(id: string) {
       const run = await projection.getRun(id);
       if (!run) return null;
-      const events = await pool.query(
-        "SELECT event_id, type, payload, created_at FROM factory_events WHERE run_id = $1 ORDER BY created_at, event_id",
-        [id],
-      );
-      return { ...run, events: events.rows };
+      const events = await db
+        .select({
+          event_id: factoryEvents.eventId,
+          type: factoryEvents.type,
+          payload: factoryEvents.payload,
+          created_at: factoryEvents.createdAt,
+        })
+        .from(factoryEvents)
+        .where(eq(factoryEvents.runId, id))
+        .orderBy(asc(factoryEvents.createdAt), asc(factoryEvents.eventId));
+      return { ...run, events };
     },
 
     async getEvents(id: string) {
-      const result = await pool.query(
-        "SELECT event_id, type, payload, created_at FROM factory_events WHERE run_id = $1 ORDER BY created_at, event_id",
-        [id],
-      );
-      return result.rows;
+      return db
+        .select({
+          event_id: factoryEvents.eventId,
+          type: factoryEvents.type,
+          payload: factoryEvents.payload,
+          created_at: factoryEvents.createdAt,
+        })
+        .from(factoryEvents)
+        .where(eq(factoryEvents.runId, id))
+        .orderBy(asc(factoryEvents.createdAt), asc(factoryEvents.eventId));
     },
 
     async cancelRun(id: string) {

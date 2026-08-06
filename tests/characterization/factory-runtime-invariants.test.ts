@@ -8,7 +8,6 @@ import { profileForRole, ROLE_PROFILES } from "../../src/agents/role-profiles.js
 import { projectBankId } from "../../src/integrations/hindsight-config.js";
 import { memoryBankFromEnv } from "../../src/temporal/production-worker.js";
 import { TASK_QUEUES } from "../../src/temporal/task-queues.js";
-import { createFactoryProjection } from "../../src/db/factory-projection.js";
 import {
   FACTORY_NODE_NAMES,
   MAX_NODE_ATTEMPTS_BEFORE_CONTINUE_AS_NEW,
@@ -81,12 +80,12 @@ describe("factory runtime invariants", () => {
 
   describe("canonical Pi tool permissions", () => {
     it("exposes the phase tool allowlist used by agent activities", () => {
-      expect(toolsForRole("scout")).toEqual(["read", "grep", "find", "ls", "context7", "web_search"]);
-      expect(toolsForRole("plan")).toEqual(["read", "grep", "find", "ls", "context7", "web_search"]);
-      expect(toolsForRole("implement")).toEqual(["read", "bash", "edit", "write", "grep", "find", "ls", "context7"]);
-      expect(toolsForRole("repair")).toEqual(["read", "bash", "edit", "write", "grep", "find", "ls", "context7", "web_search"]);
-      expect(toolsForRole("review")).toEqual(["read", "grep", "find", "ls", "context7", "web_search"]);
-      expect(toolsForRole("maintainability_critic")).toEqual(["read", "grep", "find", "ls", "context7"]);
+      expect(toolsForRole("scout")).toEqual(["read", "grep", "find", "ls", "web_search", "resolve-library-id", "query-docs"]);
+      expect(toolsForRole("plan")).toEqual(["read", "grep", "find", "ls", "web_search", "resolve-library-id", "query-docs"]);
+      expect(toolsForRole("implement")).toEqual(["read", "bash", "edit", "write", "grep", "find", "ls", "resolve-library-id", "query-docs"]);
+      expect(toolsForRole("repair")).toEqual(["read", "bash", "edit", "write", "grep", "find", "ls", "web_search", "resolve-library-id", "query-docs"]);
+      expect(toolsForRole("review")).toEqual(["read", "grep", "find", "ls", "web_search", "resolve-library-id", "query-docs", "get_evidence", "list_evidence_meta"]);
+      expect(toolsForRole("maintainability_critic")).toEqual(["read", "grep", "find", "ls", "resolve-library-id", "query-docs", "get_evidence"]);
       expect(toolsForRole("unknown")).toEqual([]);
     });
 
@@ -142,91 +141,17 @@ describe("factory runtime invariants", () => {
   });
 
   describe("projection idempotency", () => {
-    it("uses ON CONFLICT for all primary projection writes", async () => {
-      const queries: Array<{ text: string; values: unknown[] }> = [];
-      const projection = createFactoryProjection({
-        query: async (text, values = []) => {
-          queries.push({ text, values });
-          return { rows: text.includes("RETURNING") ? [] : [] };
-        },
-      });
-
-      await projection.recordRun({ runId: "run", workflowId: "factory-run", taskId: "task", status: "running" });
-      await projection.recordEvent({ runId: "run", eventId: "event-1", type: "started", payload: {} });
-      await projection.recordEventOutbox({ runId: "run", eventId: "event-2", type: "outbox", payload: {} });
-      await projection.recordArtifact({ runId: "run", digest: `registry/app@sha256:${"a".repeat(64)}`, image: "registry/app" });
-      await projection.recordDeployment({ runId: "run", profile: "staging", digest: `registry/app@sha256:${"a".repeat(64)}`, status: "healthy" });
-      await projection.recordEvidenceItem({
-        runId: "run",
-        id: "ev-1",
-        kind: "agent_output",
-        schemaVersion: "evidence-item.v1",
-        mediaType: "application/json",
-        sha256: "a".repeat(64),
-        uri: "s3://evidence/ev-1",
-        producer: { type: "agent", id: "scout", version: "1" },
-        subject: { node: "scout" },
-        createdAt: "2026-08-06T00:00:00.000Z",
-        redaction: "none",
-      });
-      await projection.recordGateDecision({
-        runId: "run",
-        gateId: "review",
-        decision: "pass",
-        policyVersion: "v1",
-        reasons: [],
-        evidenceRefs: ["ev-1"],
-      });
-      await projection.recordEvidenceManifest({
-        runId: "run",
-        hash: "manifest-hash",
-        manifest: {
-          schemaVersion: "evidence-manifest.v1",
-          runId: "run",
-          evidenceItemIds: ["ev-1"],
-          updatedAt: "2026-08-06T00:00:00.000Z",
-        },
-      });
-      await projection.recordScenarioRun({
-        runId: "run",
-        scenarioId: "scenario-1",
-        attemptId: "attempt-1",
-        status: "passed",
-        startedAt: "2026-08-06T00:00:00.000Z",
-      });
-      await projection.recordProbeRun({
-        runId: "run",
-        probeId: "probe-1",
-        attemptId: "attempt-1",
-        status: "passed",
-        record: {},
-      });
-      await projection.recordFeedbackItem({ runId: "run", feedbackId: "fb-1", source: "user", summary: "ok" });
-      await projection.recordIncidentLink({ runId: "run", incidentId: "inc-1", source: "pagerduty" });
-      await projection.recordOracleCalibration({
-        runId: "run",
-        oracleId: "oracle-1",
-        calibrationId: "cal-1",
-        score: 0.9,
-      });
-
-      const writeQueries = queries.filter(({ text }) => text.includes("INSERT INTO"));
-      expect(writeQueries.length).toBeGreaterThanOrEqual(12);
-      expect(writeQueries.every(({ text }) => text.includes("ON CONFLICT"))).toBe(true);
+    it("documents Drizzle onConflict semantics for projection writes", () => {
+      const source = readFileSync(join(repoRoot, "src/db/factory-projection.ts"), "utf8");
+      expect(source).toContain("onConflictDoUpdate");
+      expect(source).toContain("onConflictDoNothing");
+      expect(source).toContain("db.transaction");
     });
 
-    it("deduplicates repeated event projections", async () => {
-      const queries: string[] = [];
-      const projection = createFactoryProjection({
-        query: async (text) => {
-          queries.push(text);
-          return { rows: [] };
-        },
-      });
-      await projection.recordEvent({ runId: "run", eventId: "event-1", type: "started", payload: { node: "scout" } });
-      await projection.recordEvent({ runId: "run", eventId: "event-1", type: "started", payload: { node: "scout" } });
-      expect(queries.filter((text) => text.includes("factory_events")).length).toBe(2);
-      expect(queries.every((text) => text.includes("ON CONFLICT (run_id, event_id) DO NOTHING"))).toBe(true);
+    it("points integration coverage at tests/db/factory-projection.test.ts", () => {
+      const source = readFileSync(join(repoRoot, "tests/db/factory-projection.test.ts"), "utf8");
+      expect(source).toContain("upserts runs, events, artifacts, and deployments idempotently");
+      expect(source).toContain("writes outbox events inside a transaction and deduplicates repeats");
     });
   });
 

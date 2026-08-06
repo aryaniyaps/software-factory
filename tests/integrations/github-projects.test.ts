@@ -1,6 +1,37 @@
-import { describe, expect, it } from "vitest";
-import { GithubProjectProvider } from "../../src/integrations/github-projects.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { GithubGraphqlClientImpl, GithubProjectProvider } from "../../src/integrations/github-projects.js";
 import { ProjectRegistry } from "../../src/tasks/project-registry.js";
+
+const { graphqlQuery, graphqlDefaults } = vi.hoisted(() => {
+  const graphqlQuery = vi.fn();
+  const graphqlDefaults = vi.fn(() => graphqlQuery);
+  return { graphqlQuery, graphqlDefaults };
+});
+
+vi.mock("@octokit/graphql", () => ({
+  graphql: {
+    defaults: graphqlDefaults,
+  },
+}));
+
+describe("GithubGraphqlClientImpl", () => {
+  beforeEach(() => {
+    graphqlDefaults.mockClear();
+    graphqlQuery.mockReset();
+    graphqlQuery.mockResolvedValue({ node: {} });
+  });
+
+  it("configures bearer auth and optional enterprise baseUrl", async () => {
+    const client = new GithubGraphqlClientImpl("ghp_test", "https://ghe.example.com/api");
+    await client.request("query($id:ID!){ node(id:$id){ id } }", { id: "1" });
+
+    expect(graphqlDefaults).toHaveBeenCalledWith({
+      baseUrl: "https://ghe.example.com/api",
+      headers: { authorization: "Bearer ghp_test" },
+    });
+    expect(graphqlQuery).toHaveBeenCalledWith("query($id:ID!){ node(id:$id){ id } }", { id: "1" });
+  });
+});
 
 describe("GithubProjectProvider", () => {
   it("normalizes ready items from multiple repositories", async () => {

@@ -1,49 +1,79 @@
-import type { Context7ToolClient, WebSearchToolClient } from "../agents/tools.js";
+import { Client, StreamableHTTPClientTransport, type CallToolResult } from "@modelcontextprotocol/client";
+import type { Context7ToolClient } from "../agents/tools.js";
 
-async function jsonRpc(url: string, body: unknown, apiKey?: string): Promise<unknown> {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      accept: "application/json, text/event-stream",
-      "content-type": "application/json",
-      ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) throw new Error(`research request failed: ${response.status}`);
-  const text = await response.text();
-  const dataLine = text.split("\n").find((line) => line.startsWith("data:"));
-  return JSON.parse(dataLine ? dataLine.slice(5).trim() : text);
+export interface Context7McpConfig {
+  endpoint?: string;
+  apiKey?: string;
 }
 
-export class Context7Client implements Context7ToolClient {
-  constructor(private readonly endpoint = process.env.CONTEXT7_MCP_URL ?? "https://mcp.context7.com/mcp", private readonly apiKey = process.env.CONTEXT7_API_KEY) {}
+export function formatCallToolResult(result: CallToolResult): string {
+  if (result.isError) {
+    const message = (result.content ?? [])
+      .map((block) => ("text" in block ? block.text : ""))
+      .filter(Boolean)
+      .join("\n");
+    throw new Error(message || "Context7 tool call failed");
+  }
+  if (result.structuredContent !== undefined) {
+    return typeof result.structuredContent === "string"
+      ? result.structuredContent
+      : JSON.stringify(result.structuredContent);
+  }
+  const text = (result.content ?? [])
+    .map((block) => ("text" in block ? block.text : ""))
+    .filter(Boolean)
+    .join("\n");
+  if (!text) return JSON.stringify(result);
+  return text;
+}
 
-  async call(input: { library: string; query: string }): Promise<string> {
-    const resolved = await jsonRpc(this.endpoint, {
-      jsonrpc: "2.0", id: 1, method: "tools/call",
-      params: { name: "resolve-library-id", arguments: { libraryName: input.library } },
-    }, this.apiKey);
-    const libraryId = JSON.stringify(resolved);
-    const docs = await jsonRpc(this.endpoint, {
-      jsonrpc: "2.0", id: 2, method: "tools/call",
-      params: { name: "query-docs", arguments: { libraryId, query: input.query } },
-    }, this.apiKey);
-    return JSON.stringify(docs);
+async function withMcpClient<T>(
+  endpoint: string,
+  apiKey: string | undefined,
+  run: (client: Client) => Promise<T>,
+): Promise<T> {
+  const client = new Client({ name: "software-factory", version: "1.0.0" });
+  const transport = new StreamableHTTPClientTransport(new URL(endpoint), {
+    ...(apiKey ? { authProvider: { token: async () => apiKey } } : {}),
+  });
+  await client.connect(transport);
+  try {
+    return await run(client);
+  } finally {
+    await client.close();
+    await transport.close();
   }
 }
 
-export class WebSearchClient implements WebSearchToolClient {
-  constructor(private readonly endpoint = process.env.WEB_SEARCH_URL, private readonly apiKey = process.env.WEB_SEARCH_API_KEY) {}
+export class Context7McpClient {
+  private readonly endpoint: string;
+  private readonly apiKey: string | undefined;
 
-  async search(query: string): Promise<string> {
-    if (!this.endpoint) throw new Error("WEB_SEARCH_URL is required for the web_search tool");
-    const response = await fetch(this.endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json", ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}) },
-      body: JSON.stringify({ query }),
+  constructor(config: Context7McpConfig = {}) {
+    this.endpoint = config.endpoint ?? process.env.CONTEXT7_MCP_URL ?? "https://mcp.context7.com/mcp";
+    this.apiKey = config.apiKey ?? process.env.CONTEXT7_API_KEY;
+  }
+
+  async resolveLibraryId(libraryName: string): Promise<string> {
+    return withMcpClient(this.endpoint, this.apiKey, async (client) => {
+      const resolved = await client.callTool({ name: "resolve-library-id", arguments: { libraryName } });
+      return formatCallToolResult(resolved);
     });
-    if (!response.ok) throw new Error(`web search failed: ${response.status}`);
-    return response.text();
+  }
+
+  async queryDocs(libraryId: string, query: string): Promise<string> {
+    return withMcpClient(this.endpoint, this.apiKey, async (client) => {
+      const docs = await client.callTool({ name: "query-docs", arguments: { libraryId, query } });
+      return formatCallToolResult(docs);
+    });
+  }
+}
+
+export class Context7Client implements Context7ToolClient {
+  private readonly mcp = new Context7McpClient();
+
+  async call(input: { library: string; query: string }): Promise<string> {
+    const libraryId = await this.mcp.resolveLibraryId(input.library);
+    return this.mcp.queryDocs(libraryId, input.query);
   }
 }

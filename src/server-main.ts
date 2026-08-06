@@ -1,23 +1,24 @@
-import { readFile } from "node:fs/promises";
 import { createApiServer } from "./api/server.js";
 import { createProductionApi } from "./api/production-api.js";
 import { createEvidenceService } from "./api/evidence-service.js";
 import { createOperationsService } from "./api/operations-service.js";
-import { createPool } from "./db/database.js";
+import { closePool, createDatabase, createPool } from "./db/database.js";
 import { createFactoryRunStore } from "./db/factory-run-store.js";
 import { createEvidenceReadModel } from "./db/evidence-read-model.js";
+import { runMigrations } from "./db/migrate.js";
 import { createTemporalClient } from "./temporal/client.js";
 import { loadFactoryConfig } from "./config.js";
 import { shutdownTelemetry } from "./telemetry/bootstrap.js";
 
 export async function startServer(): Promise<void> {
   const config = loadFactoryConfig();
+  await runMigrations();
   const pool = createPool();
-  await pool.query(await readFile(new URL("./db/schema.sql", import.meta.url), "utf8"));
+  const db = createDatabase(pool);
   const temporal = await createTemporalClient();
-  const store = createFactoryRunStore(pool);
+  const store = createFactoryRunStore(db);
   const evidenceService = createEvidenceService({
-    readModel: createEvidenceReadModel(pool),
+    readModel: createEvidenceReadModel(db),
     config: {
       retentionDays: config.evidenceRetentionDays,
       signedUrls: {
@@ -45,7 +46,7 @@ export async function startServer(): Promise<void> {
 
   async function close(): Promise<void> {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-    await pool.end();
+    await closePool(pool);
     await shutdownTelemetry();
   }
 

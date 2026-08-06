@@ -5,7 +5,9 @@ export const CRITIC_READONLY_TOOLS = [
   "grep",
   "find",
   "ls",
-  "context7",
+  "resolve-library-id",
+  "query-docs",
+  "get_evidence",
 ] as const;
 
 export const CRITIC_FORBIDDEN_TOOLS = [
@@ -36,4 +38,3 @@ export const maintainabilityCriticRole = {
   ],
   outputSchema: "critic-report.v1",
 } as const;
-

@@ -14,6 +14,17 @@ describe("agent Activities", () => {
       input: { plan: "do it" },
     });
     expect(result).toMatchObject({ sessionId: "session-1", output: { role: "implement", status: "succeeded" } });
-    expect(received).toMatchObject({ role: "implement", cwd: "/worktree", metadata: { factoryRunId: "run", ticketId: "task", phaseId: "implement" } });
+    expect(received).toMatchObject({
+      role: "implement",
+      cwd: "/worktree",
+      metadata: {
+        factory_run_id: "run",
+        ticket_id: "task",
+        phase_id: "implement",
+        agent_role: "implement",
+        session_id: "run",
+        trace_id: "run:task:1",
+      },
+    });
   });
 });

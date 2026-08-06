@@ -25,3 +25,7 @@ Koa owns HTTP parsing and lifecycle; it does not schedule Temporal work or execu
 - Hindsight context is richer and reusable across repositories without mixing run-specific memories.
 - Role sessions are slightly more expensive because loaders and memory packets are not shared.
 - Provider availability and Hindsight outages must be represented explicitly in agent context rather than hidden behind unsafe fallbacks.
+
+## Amendment (2026-08-06): per-role Pi agentDirs
+
+Each workflow role now boots from `$PI_RESOURCE_ROOT/roles/<role>/` (or `infra/pi/roles/<role>/` in the repository during development). Skill paths are exclusive to the role harness spec; system prompts load from `prompts/system.md` via Pi `systemPromptOverride`. MCP tools are registered only through the factory MCP bridge with deny-by-default gateway policy files under `policy/mcp-gateway.yaml`.

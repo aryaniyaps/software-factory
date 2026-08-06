@@ -1,0 +1,12 @@
+services:
+  phoenix:
+    profiles: [observability]
+    image: arizephoenix/phoenix:version-19.18.0
+    ports:
+      - "6006:6006"
+      - "4317:4317"
+    volumes:
+      - phoenix-data:/root/.phoenix
+
+volumes:
+  phoenix-data:

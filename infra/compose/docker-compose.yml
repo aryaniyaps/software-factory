@@ -7,14 +7,14 @@
 # With in-container worker:
 #   docker compose -f infra/compose/docker-compose.yml --profile worker up -d
 #
-# With LGTM observability:
+# With Phoenix observability:
 #   docker compose -f infra/compose/docker-compose.yml --profile observability up -d
 #   npm run compose:obs
 #
-# Factory processes export OTLP to http://127.0.0.1:4318 when observability is enabled.
+# Factory processes export OTLP traces to http://127.0.0.1:6006 when observability is enabled.
 
 include:
-  - path: ../observability/docker-compose.lgtm.yml
+  - path: ../observability/docker-compose.phoenix.yml
 
 services:
   postgres:
@@ -38,6 +38,9 @@ services:
     volumes: ["./litellm.config.yaml:/app/config.yaml:ro"]
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://factory:factory@postgres:5432/factory}
+      LITELLM_OTEL_V2: "true"
+      PHOENIX_COLLECTOR_ENDPOINT: http://phoenix:6006/v1/traces
+      PHOENIX_PROJECT_NAME: software-factory
     depends_on:
       postgres:
         condition: service_healthy

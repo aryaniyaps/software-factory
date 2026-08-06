@@ -39,7 +39,8 @@ export function initTelemetry(options: TelemetryOptions = {}): void {
     diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
   }
 
-  const endpoint = options.endpoint ?? process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://127.0.0.1:4318";
+  const endpoint = options.endpoint ?? process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://127.0.0.1:6006";
+  const metricsEndpoint = process.env.OTEL_METRICS_EXPORTER_OTLP_ENDPOINT;
   const serviceName = options.serviceName ?? process.env.OTEL_SERVICE_NAME ?? "software-factory";
   const serviceVersion = options.serviceVersion ?? process.env.npm_package_version ?? "0.0.0";
 
@@ -49,10 +50,14 @@ export function initTelemetry(options: TelemetryOptions = {}): void {
       [ATTR_SERVICE_VERSION]: serviceVersion,
     }),
     traceExporter: new OTLPTraceExporter({ url: `${endpoint}/v1/traces` }),
-    metricReader: new PeriodicExportingMetricReader({
-      exporter: new OTLPMetricExporter({ url: `${endpoint}/v1/metrics` }),
-      exportIntervalMillis: 15_000,
-    }),
+    ...(metricsEndpoint
+      ? {
+          metricReader: new PeriodicExportingMetricReader({
+            exporter: new OTLPMetricExporter({ url: `${metricsEndpoint}/v1/metrics` }),
+            exportIntervalMillis: 15_000,
+          }),
+        }
+      : {}),
   });
 
   sdk.start();

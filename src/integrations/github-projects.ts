@@ -1,3 +1,4 @@
+import { graphql } from "@octokit/graphql";
 import type { FactoryTask, TaskProvider } from "../tasks/task-provider.js";
 import { ProjectRegistry } from "../tasks/project-registry.js";
 
@@ -12,23 +13,25 @@ interface ProjectItem {
   fieldValues: Array<{ name: string; value: string }>;
 }
 
-interface GithubGraphqlClient {
+export interface GithubGraphqlClient {
   request(query: string, variables: Record<string, unknown>): Promise<unknown>;
 }
 
 export class GithubGraphqlClientImpl implements GithubGraphqlClient {
-  constructor(private readonly token: string, private readonly endpoint = "https://api.github.com/graphql") {}
+  private readonly query: ReturnType<typeof graphql.defaults>;
+
+  constructor(
+    token: string,
+    baseUrl = process.env.GITHUB_API_URL,
+  ) {
+    this.query = graphql.defaults({
+      ...(baseUrl ? { baseUrl } : {}),
+      headers: { authorization: `Bearer ${token}` },
+    });
+  }
 
   async request(query: string, variables: Record<string, unknown>): Promise<unknown> {
-    const response = await fetch(this.endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${this.token}` },
-      body: JSON.stringify({ query, variables }),
-    });
-    if (!response.ok) throw new Error(`GitHub GraphQL failed: ${response.status}`);
-    const body = await response.json() as { data?: unknown; errors?: Array<{ message: string }> };
-    if (body.errors?.length) throw new Error(body.errors.map((error) => error.message).join("; "));
-    return body.data;
+    return this.query(query, variables);
   }
 }
 

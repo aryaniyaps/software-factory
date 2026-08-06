@@ -1,9 +1,18 @@
+import { asc, desc, eq, gte } from "drizzle-orm";
 import type { EvidenceManifest } from "../evidence/manifest.js";
 import { decodeCursor, type PageRequest } from "../api/pagination.js";
-
-export interface Queryable {
-  query(text: string, values?: unknown[]): Promise<{ rows: unknown[] }>;
-}
+import type { Database } from "./database.js";
+import {
+  deploymentObservations,
+  evidenceItems,
+  evidenceManifests,
+  factoryDeployments,
+  factoryNodeAttempts,
+  factoryRuns,
+  gateDecisions,
+  probeRuns,
+  scenarioRuns,
+} from "./schema.js";
 
 export interface FactoryRunSummaryRow {
   runId: string;
@@ -94,266 +103,195 @@ export interface EvidenceReadModel {
   listDeploymentObservations(runId: string): Promise<DeploymentObservationRow[]>;
 }
 
-export function createEvidenceReadModel(db: Queryable): EvidenceReadModel {
+export function createEvidenceReadModel(db: Database): EvidenceReadModel {
   return {
     async listRuns(request, retentionCutoff) {
       const offset = decodeCursor(request.cursor);
-      const values: unknown[] = [request.limit + 1, offset];
-      let text = `SELECT run_id, workflow_id, task_id, status, current_node, failure_reason, updated_at
-        FROM factory_runs`;
-      if (retentionCutoff) {
-        values.push(retentionCutoff.toISOString());
-        text += ` WHERE updated_at >= $3`;
-      }
-      text += ` ORDER BY updated_at DESC, run_id OFFSET $2 LIMIT $1`;
-      const result = await db.query(text, values);
-      return result.rows.map(mapRunRow);
+      const rows = await db
+        .select()
+        .from(factoryRuns)
+        .where(retentionCutoff ? gte(factoryRuns.updatedAt, retentionCutoff) : undefined)
+        .orderBy(desc(factoryRuns.updatedAt), desc(factoryRuns.runId))
+        .offset(offset)
+        .limit(request.limit + 1);
+      return rows.map(mapRunRow);
     },
 
     async getRun(runId) {
-      const result = await db.query(
-        `SELECT run_id, workflow_id, task_id, status, current_node, failure_reason, updated_at
-        FROM factory_runs WHERE run_id = $1`,
-        [runId],
-      );
-      const row = result.rows[0];
+      const [row] = await db
+        .select()
+        .from(factoryRuns)
+        .where(eq(factoryRuns.runId, runId))
+        .limit(1);
       return row ? mapRunRow(row) : null;
     },
 
     async listAttempts(runId) {
-      const result = await db.query(
-        `SELECT run_id, attempt_id, node, status, started_at, completed_at, failure_code, evidence_manifest_hash
-        FROM factory_node_attempts WHERE run_id = $1 ORDER BY started_at, attempt_id`,
-        [runId],
-      );
-      return result.rows.map(mapAttemptRow);
+      const rows = await db
+        .select()
+        .from(factoryNodeAttempts)
+        .where(eq(factoryNodeAttempts.runId, runId))
+        .orderBy(asc(factoryNodeAttempts.startedAt), asc(factoryNodeAttempts.attemptId));
+      return rows.map(mapAttemptRow);
     },
 
     async listEvidenceItems(runId) {
-      const result = await db.query(
-        `SELECT id, kind, schema_version, media_type, sha256, uri, producer_type, producer_id, producer_version, subject, redaction, created_at
-        FROM evidence_items WHERE run_id = $1 ORDER BY created_at, id`,
-        [runId],
-      );
-      return result.rows.map(mapEvidenceRow);
+      const rows = await db
+        .select()
+        .from(evidenceItems)
+        .where(eq(evidenceItems.runId, runId))
+        .orderBy(asc(evidenceItems.createdAt), asc(evidenceItems.id));
+      return rows.map(mapEvidenceRow);
     },
 
     async getEvidenceManifest(runId) {
-      const result = await db.query(
-        `SELECT manifest_hash, manifest FROM evidence_manifests WHERE run_id = $1`,
-        [runId],
-      );
-      const row = result.rows[0] as { manifest_hash: string; manifest: EvidenceManifest } | undefined;
+      const [row] = await db
+        .select({
+          manifestHash: evidenceManifests.manifestHash,
+          manifest: evidenceManifests.manifest,
+        })
+        .from(evidenceManifests)
+        .where(eq(evidenceManifests.runId, runId))
+        .limit(1);
       if (!row) return null;
-      return { hash: row.manifest_hash, manifest: row.manifest };
+      return { hash: row.manifestHash, manifest: row.manifest as EvidenceManifest };
     },
 
     async listGateDecisions(runId) {
-      const result = await db.query(
-        `SELECT gate_id, decision, policy_version, reasons, evidence_refs, decided_at
-        FROM gate_decisions WHERE run_id = $1 ORDER BY decided_at, gate_id`,
-        [runId],
-      );
-      return result.rows.map(mapGateRow);
+      const rows = await db
+        .select()
+        .from(gateDecisions)
+        .where(eq(gateDecisions.runId, runId))
+        .orderBy(asc(gateDecisions.decidedAt), asc(gateDecisions.gateId));
+      return rows.map(mapGateRow);
     },
 
     async listScenarioRuns(runId) {
-      const result = await db.query(
-        `SELECT scenario_id, attempt_id, status, satisfaction, started_at, completed_at
-        FROM scenario_runs WHERE run_id = $1 ORDER BY started_at, scenario_id, attempt_id`,
-        [runId],
-      );
-      return result.rows.map(mapScenarioRow);
+      const rows = await db
+        .select()
+        .from(scenarioRuns)
+        .where(eq(scenarioRuns.runId, runId))
+        .orderBy(asc(scenarioRuns.startedAt), asc(scenarioRuns.scenarioId), asc(scenarioRuns.attemptId));
+      return rows.map(mapScenarioRow);
     },
 
     async listProbeRuns(runId) {
-      const result = await db.query(
-        `SELECT probe_id, attempt_id, status, record, recorded_at
-        FROM probe_runs WHERE run_id = $1 ORDER BY recorded_at, probe_id, attempt_id`,
-        [runId],
-      );
-      return result.rows.map(mapProbeRow);
+      const rows = await db
+        .select()
+        .from(probeRuns)
+        .where(eq(probeRuns.runId, runId))
+        .orderBy(asc(probeRuns.recordedAt), asc(probeRuns.probeId), asc(probeRuns.attemptId));
+      return rows.map(mapProbeRow);
     },
 
     async listDeployments(runId) {
-      const result = await db.query(
-        `SELECT profile, digest, status, updated_at FROM factory_deployments WHERE run_id = $1 ORDER BY profile`,
-        [runId],
-      );
-      return result.rows.map(mapDeploymentRow);
+      const rows = await db
+        .select()
+        .from(factoryDeployments)
+        .where(eq(factoryDeployments.runId, runId))
+        .orderBy(asc(factoryDeployments.profile));
+      return rows.map(mapDeploymentRow);
     },
 
     async listDeploymentObservations(runId) {
-      const result = await db.query(
-        `SELECT profile, observation_id, status, observed_at
-        FROM deployment_observations WHERE run_id = $1 ORDER BY observed_at, profile, observation_id`,
-        [runId],
-      );
-      return result.rows.map(mapObservationRow);
+      const rows = await db
+        .select()
+        .from(deploymentObservations)
+        .where(eq(deploymentObservations.runId, runId))
+        .orderBy(asc(deploymentObservations.observedAt), asc(deploymentObservations.profile), asc(deploymentObservations.observationId));
+      return rows.map(mapObservationRow);
     },
   };
 }
 
-function mapRunRow(row: unknown): FactoryRunSummaryRow {
-  const entry = row as {
-    run_id: string;
-    workflow_id: string;
-    task_id: string;
-    status: string;
-    current_node: string | null;
-    failure_reason: string | null;
-    updated_at: string | Date;
-  };
+function mapRunRow(row: typeof factoryRuns.$inferSelect): FactoryRunSummaryRow {
   return {
-    runId: entry.run_id,
-    workflowId: entry.workflow_id,
-    taskId: entry.task_id,
-    status: entry.status,
-    currentNode: entry.current_node ?? undefined,
-    failureReason: entry.failure_reason ?? undefined,
-    updatedAt: toIso(entry.updated_at),
+    runId: row.runId,
+    workflowId: row.workflowId,
+    taskId: row.taskId,
+    status: row.status,
+    currentNode: row.currentNode ?? undefined,
+    failureReason: row.failureReason ?? undefined,
+    updatedAt: row.updatedAt.toISOString(),
   };
 }
 
-function mapAttemptRow(row: unknown): NodeAttemptRow {
-  const entry = row as {
-    run_id: string;
-    attempt_id: string;
-    node: string;
-    status: string;
-    started_at: string | Date;
-    completed_at: string | Date | null;
-    failure_code: string | null;
-    evidence_manifest_hash: string | null;
-  };
+function mapAttemptRow(row: typeof factoryNodeAttempts.$inferSelect): NodeAttemptRow {
   return {
-    runId: entry.run_id,
-    attemptId: entry.attempt_id,
-    node: entry.node,
-    status: entry.status,
-    startedAt: toIso(entry.started_at),
-    completedAt: entry.completed_at ? toIso(entry.completed_at) : undefined,
-    failureCode: entry.failure_code ?? undefined,
-    evidenceManifestHash: entry.evidence_manifest_hash ?? undefined,
+    runId: row.runId,
+    attemptId: row.attemptId,
+    node: row.node,
+    status: row.status,
+    startedAt: row.startedAt.toISOString(),
+    completedAt: row.completedAt?.toISOString(),
+    failureCode: row.failureCode ?? undefined,
+    evidenceManifestHash: row.evidenceManifestHash ?? undefined,
   };
 }
 
-function mapEvidenceRow(row: unknown): EvidenceItemRow {
-  const entry = row as {
-    id: string;
-    kind: string;
-    schema_version: string;
-    media_type: string;
-    sha256: string;
-    uri: string;
-    producer_type: string;
-    producer_id: string;
-    producer_version: string;
-    subject: Record<string, string>;
-    redaction: "none" | "secrets" | "pii";
-    created_at: string | Date;
-  };
+function mapEvidenceRow(row: typeof evidenceItems.$inferSelect): EvidenceItemRow {
   return {
-    id: entry.id,
-    kind: entry.kind,
-    schemaVersion: entry.schema_version,
-    mediaType: entry.media_type,
-    sha256: entry.sha256,
-    uri: entry.uri,
-    producerType: entry.producer_type,
-    producerId: entry.producer_id,
-    producerVersion: entry.producer_version,
-    subject: entry.subject,
-    redaction: entry.redaction,
-    createdAt: toIso(entry.created_at),
+    id: row.id,
+    kind: row.kind,
+    schemaVersion: row.schemaVersion,
+    mediaType: row.mediaType,
+    sha256: row.sha256,
+    uri: row.uri,
+    producerType: row.producerType,
+    producerId: row.producerId,
+    producerVersion: row.producerVersion,
+    subject: row.subject as Record<string, string>,
+    redaction: row.redaction as EvidenceItemRow["redaction"],
+    createdAt: row.createdAt.toISOString(),
   };
 }
 
-function mapGateRow(row: unknown): GateDecisionRow {
-  const entry = row as {
-    gate_id: string;
-    decision: string;
-    policy_version: string;
-    reasons: unknown;
-    evidence_refs: string[];
-    decided_at: string | Date;
-  };
+function mapGateRow(row: typeof gateDecisions.$inferSelect): GateDecisionRow {
   return {
-    gateId: entry.gate_id,
-    decision: entry.decision,
-    policyVersion: entry.policy_version,
-    reasons: entry.reasons,
-    evidenceRefs: entry.evidence_refs,
-    decidedAt: toIso(entry.decided_at),
+    gateId: row.gateId,
+    decision: row.decision,
+    policyVersion: row.policyVersion,
+    reasons: row.reasons,
+    evidenceRefs: row.evidenceRefs as string[],
+    decidedAt: row.decidedAt.toISOString(),
   };
 }
 
-function mapScenarioRow(row: unknown): ScenarioRunRow {
-  const entry = row as {
-    scenario_id: string;
-    attempt_id: string;
-    status: string;
-    satisfaction: number | null;
-    started_at: string | Date;
-    completed_at: string | Date | null;
-  };
+function mapScenarioRow(row: typeof scenarioRuns.$inferSelect): ScenarioRunRow {
   return {
-    scenarioId: entry.scenario_id,
-    attemptId: entry.attempt_id,
-    status: entry.status,
-    satisfaction: entry.satisfaction ?? undefined,
-    startedAt: toIso(entry.started_at),
-    completedAt: entry.completed_at ? toIso(entry.completed_at) : undefined,
+    scenarioId: row.scenarioId,
+    attemptId: row.attemptId,
+    status: row.status,
+    satisfaction: row.satisfaction ?? undefined,
+    startedAt: row.startedAt.toISOString(),
+    completedAt: row.completedAt?.toISOString(),
   };
 }
 
-function mapProbeRow(row: unknown): ProbeRunRow {
-  const entry = row as {
-    probe_id: string;
-    attempt_id: string;
-    status: string;
-    record: unknown;
-    recorded_at: string | Date;
-  };
+function mapProbeRow(row: typeof probeRuns.$inferSelect): ProbeRunRow {
   return {
-    probeId: entry.probe_id,
-    attemptId: entry.attempt_id,
-    status: entry.status,
-    record: entry.record,
-    recordedAt: toIso(entry.recorded_at),
+    probeId: row.probeId,
+    attemptId: row.attemptId,
+    status: row.status,
+    record: row.record,
+    recordedAt: row.recordedAt.toISOString(),
   };
 }
 
-function mapDeploymentRow(row: unknown): DeploymentRow {
-  const entry = row as {
-    profile: string;
-    digest: string;
-    status: string;
-    updated_at: string | Date;
-  };
+function mapDeploymentRow(row: typeof factoryDeployments.$inferSelect): DeploymentRow {
   return {
-    profile: entry.profile,
-    digest: entry.digest,
-    status: entry.status,
-    updatedAt: toIso(entry.updated_at),
+    profile: row.profile,
+    digest: row.digest,
+    status: row.status,
+    updatedAt: row.updatedAt.toISOString(),
   };
 }
 
-function mapObservationRow(row: unknown): DeploymentObservationRow {
-  const entry = row as {
-    profile: string;
-    observation_id: string;
-    status: string;
-    observed_at: string | Date;
-  };
+function mapObservationRow(row: typeof deploymentObservations.$inferSelect): DeploymentObservationRow {
   return {
-    profile: entry.profile,
-    observationId: entry.observation_id,
-    status: entry.status,
-    observedAt: toIso(entry.observed_at),
+    profile: row.profile,
+    observationId: row.observationId,
+    status: row.status,
+    observedAt: row.observedAt.toISOString(),
   };
-}
-
-function toIso(value: string | Date): string {
-  return value instanceof Date ? value.toISOString() : value;
 }

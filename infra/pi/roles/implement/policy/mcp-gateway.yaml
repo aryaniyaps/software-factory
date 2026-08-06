@@ -1,0 +1,2 @@
+version: agt-mcp-gateway-1.0
+policy: deny-by-default

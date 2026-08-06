@@ -22,7 +22,12 @@ export type JsonValue = JsonPrimitive | JsonObject | readonly JsonValue[];
 
 const AgentOutputBase = {
   schemaVersion: Type.Literal("agent-output.v1"),
-  status: Type.Union([Type.Literal("succeeded"), Type.Literal("failed"), Type.Literal("abstained")]),
+  status: Type.Union([
+    Type.Literal("succeeded"),
+    Type.Literal("failed"),
+    Type.Literal("abstained"),
+    Type.Literal("escalate_to_human"),
+  ]),
   summary: Type.String({ minLength: 1 }),
   evidenceRefs: Type.Array(Type.String({ minLength: 1 }), { minItems: 1 }),
   data: JsonObjectSchema,
@@ -32,7 +37,7 @@ export const AgentOutputSchema = Type.Union(AgentRoles.map((role) => Type.Object
 
 export interface AgentOutputBase {
   readonly schemaVersion: "agent-output.v1";
-  readonly status: "succeeded" | "failed" | "abstained";
+  readonly status: "succeeded" | "failed" | "abstained" | "escalate_to_human";
   readonly summary: string;
   readonly evidenceRefs: readonly string[];
   readonly data: JsonObject;
@@ -143,7 +148,19 @@ export function parseAgentOutput(value: unknown): AgentOutput {
   if (output.role === "maintainability_critic") {
     validateMaintainabilityCriticData(output.data);
   }
+  if (output.status === "escalate_to_human") {
+    validateEscalationData(output.data);
+  }
   return output;
+}
+
+function validateEscalationData(data: JsonObject): void {
+  if (!("question" in data) || typeof data.question !== "string" || !data.question.trim()) {
+    throw new Error("Invalid escalation output: question required in data");
+  }
+  if ("urgency" in data && data.urgency !== "low" && data.urgency !== "medium" && data.urgency !== "high") {
+    throw new Error("Invalid escalation output: urgency must be low, medium, or high");
+  }
 }
 
 export function parseNodeResult<T>(value: unknown): NodeResult<T> {

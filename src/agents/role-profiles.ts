@@ -1,5 +1,5 @@
-import { join } from "node:path";
 import type { AgentRole } from "../contracts/nodes.js";
+import { harnessForRole, ROLE_HARNESS_SPECS, roleAgentDir, roleLoaderOptions as harnessLoaderOptions } from "./role-harness.js";
 
 export interface RoleProfile {
   skills: readonly string[];
@@ -8,51 +8,14 @@ export interface RoleProfile {
   thinkingLevel: "low" | "medium" | "high";
 }
 
-export const ROLE_PROFILES: Record<AgentRole, RoleProfile> = {
-  scout: {
-    skills: ["src/agents/skills/engineering/research/SKILL.md", "src/agents/skills/engineering/wayfinder/SKILL.md"],
-    mentalModels: ["architecture", "repository-conventions", "project-history"],
-    hindsightOperations: ["recall", "reflect", "retain"],
-    thinkingLevel: "medium",
-  },
-  plan: {
-    skills: ["src/agents/skills/engineering/codebase-design/SKILL.md", "src/agents/skills/engineering/domain-modeling/SKILL.md", "src/agents/skills/engineering/tdd/SKILL.md"],
-    mentalModels: ["architecture", "repository-conventions", "project-history"],
-    hindsightOperations: ["recall", "reflect", "retain"],
-    thinkingLevel: "high",
-  },
-  implement: {
-    skills: ["src/agents/skills/engineering/implement/SKILL.md", "src/agents/skills/engineering/tdd/SKILL.md"],
-    mentalModels: ["repository-conventions", "test-failures"],
-    hindsightOperations: ["recall", "retain"],
-    thinkingLevel: "medium",
-  },
-  repair: {
-    skills: [
-      "src/agents/skills/engineering/diagnosing-bugs/SKILL.md",
-      "src/agents/skills/engineering/tdd/SKILL.md",
-      "src/agents/skills/engineering/improve-codebase-architecture/SKILL.md",
-    ],
-    mentalModels: ["test-failures", "repository-conventions"],
-    hindsightOperations: ["recall", "reflect", "retain"],
-    thinkingLevel: "high",
-  },
-  review: {
-    skills: ["src/agents/skills/engineering/code-review/SKILL.md", "src/agents/skills/engineering/diagnosing-bugs/SKILL.md"],
-    mentalModels: ["architecture", "deployment-safety", "test-failures"],
-    hindsightOperations: ["recall", "reflect", "retain"],
-    thinkingLevel: "high",
-  },
-  maintainability_critic: {
-    skills: [
-      "src/agents/skills/engineering/code-review/SKILL.md",
-      "src/agents/skills/engineering/improve-codebase-architecture/SKILL.md",
-    ],
-    mentalModels: ["architecture", "repository-conventions", "project-history"],
-    hindsightOperations: ["recall"],
-    thinkingLevel: "high",
-  },
-};
+export const ROLE_PROFILES: Record<AgentRole, RoleProfile> = Object.fromEntries(
+  Object.entries(ROLE_HARNESS_SPECS).map(([role, spec]) => [role, {
+    skills: spec.skills,
+    mentalModels: spec.mentalModels,
+    hindsightOperations: spec.hindsightOperations,
+    thinkingLevel: spec.thinkingLevel,
+  }]),
+) as Record<AgentRole, RoleProfile>;
 
 export function profileForRole(role: string): RoleProfile {
   const profile = ROLE_PROFILES[role as AgentRole];
@@ -61,10 +24,17 @@ export function profileForRole(role: string): RoleProfile {
 }
 
 export function roleLoaderOptions(role: string, resourceRoot: string): { agentDir: string; additionalSkillPaths: string[] } {
-  const profile = profileForRole(role);
-  return { agentDir: resourceRoot, additionalSkillPaths: profile.skills.map((skill) => join(resourceRoot, skill)) };
+  return harnessLoaderOptions(role, resourceRoot);
+}
+
+export function roleLoaderOptionsForWorktree(input: { role: string; cwd: string; resourceRoot?: string }): { agentDir: string; additionalSkillPaths: string[] } {
+  const bootstrappedRoot = input.resourceRoot ?? process.env.PI_RESOURCE_ROOT;
+  if (bootstrappedRoot) {
+    return harnessLoaderOptions(input.role, bootstrappedRoot);
+  }
+  return { agentDir: roleAgentDir(input.cwd, input.role, "repo"), additionalSkillPaths: [] };
 }
 
 export function allRoleSkillPaths(): string[] {
-  return [...new Set(Object.values(ROLE_PROFILES).flatMap((profile) => [...profile.skills]))];
+  return [...new Set(Object.values(ROLE_HARNESS_SPECS).flatMap((spec) => [...spec.skills]))];
 }

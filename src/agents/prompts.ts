@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildContextPacket, type ContextPacketInput } from "./context-packet.js";
+import { harnessForRole, roleAgentDir } from "./role-harness.js";
 
 const promptsDir = join(dirname(fileURLToPath(import.meta.url)), "prompts");
 
@@ -18,7 +21,16 @@ function loadPrompt(fileName: string): string {
   return readFileSync(join(promptsDir, fileName), "utf8").trim();
 }
 
-export function promptForRole(role: string, mode?: string): string {
+export function promptForRole(role: string, mode?: string, cwd?: string): string {
+  if (cwd) {
+    const harness = harnessForRole(role);
+    const agentDir = roleAgentDir(cwd, role);
+    try {
+      return readFileSync(join(agentDir, harness.systemPromptPath), "utf8").trim();
+    } catch {
+      // fall through
+    }
+  }
   if (role === "repair" && mode === "maintainability_refactor") {
     return loadPrompt(PROMPT_FILES["repair:maintainability_refactor"]);
   }
@@ -27,7 +39,11 @@ export function promptForRole(role: string, mode?: string): string {
   return loadPrompt(fileName);
 }
 
-export function buildAgentPrompt(input: {
+export function buildAgentPrompt(input: ContextPacketInput & { cwd?: string }): string {
+  return buildContextPacket(input);
+}
+
+export function buildLegacyAgentPrompt(input: {
   role: string;
   mode?: string;
   memoryContext?: string;

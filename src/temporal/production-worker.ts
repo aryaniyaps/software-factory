@@ -3,10 +3,11 @@ import { join } from "node:path";
 import { execFile as nodeExecFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { createPool } from "../db/database.js";
+import { createDatabase, createPool } from "../db/database.js";
+import { runMigrations } from "../db/migrate.js";
 import { HindsightClient } from "@vectorize-io/hindsight-client";
-import { HindsightMemory } from "../integrations/hindsight.js";
-import { memoryBankFromEnv, memoryTags, resolveProjectBank } from "../integrations/hindsight-config.js";
+import { assertHindsightCompatibility, HindsightMemory } from "../integrations/hindsight.js";
+import { memoryBankFromEnv, memoryTags, resolveProjectBank, validateHindsightTemplate } from "../integrations/hindsight-config.js";
 import { assembleAgentMemory, retainableAgentOutcome } from "../agents/memory.js";
 import { createFactoryProjection } from "../db/factory-projection.js";
 import { PiAgentRunner } from "../agents/pi-agent.js";
@@ -65,10 +66,14 @@ export async function startWorkers(): Promise<void> {
   const crabbox = createCrabboxActivityRuntime(workspace);
   const repository = createRepositoryActivities({ git: { prepare: prepareRepository }, worktrees: new GitWorktreeManager(root) });
   const pi = new PiAgentRunner();
-  const hindsightClient = new HindsightClient({ baseUrl: process.env.HINDSIGHT_BASE_URL ?? "http://localhost:8888", apiKey: process.env.HINDSIGHT_API_KEY });
-  const memory = new HindsightMemory(hindsightClient as unknown as ConstructorParameters<typeof HindsightMemory>[0]);
+  const hindsightClient = new HindsightClient({
+    baseUrl: process.env.HINDSIGHT_BASE_URL ?? "http://localhost:8888",
+    apiKey: process.env.HINDSIGHT_API_KEY,
+  });
+  await assertHindsightCompatibility(hindsightClient);
+  const memory = new HindsightMemory(hindsightClient);
   const templatePath = process.env.HINDSIGHT_TEMPLATE_PATH ?? join(process.cwd(), "infra/hindsight/factory-bank-template.json");
-  const template = JSON.parse(await readFile(templatePath, "utf8"));
+  const template = validateHindsightTemplate(JSON.parse(await readFile(templatePath, "utf8")));
   await memory.bootstrapBank(memoryBankFromEnv(), template);
   const agent = createAgentActivities({
     run: pi.run.bind(pi),
@@ -104,8 +109,10 @@ export async function startWorkers(): Promise<void> {
     health: new HealthChecker(),
   });
   const health = new HealthChecker();
+  await runMigrations();
   const pool = createPool();
-  const projection = createFactoryProjection(pool);
+  const db = createDatabase(pool);
+  const projection = createFactoryProjection(db);
   const projectionActivities = createProjectionActivities(projection);
   const hiddenScenariosRoot = process.env.FACTORY_HIDDEN_SCENARIOS_ROOT
     ?? join(process.cwd(), "factory/hidden-scenarios");

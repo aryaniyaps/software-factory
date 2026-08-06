@@ -1,31 +1,32 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, afterAll, beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { createFactoryRunStore } from "../../src/db/factory-run-store.js";
+import { factoryEvents, factoryRuns } from "../../src/db/schema.js";
+import { closeTestDatabase, getTestDatabase, isPostgresAvailable, resetTestDatabase, truncateTestTables } from "./test-database.js";
 
 describe("FactoryRunStore", () => {
-  it("creates a factory run projection and task event", async () => {
-    const queries: Array<{ text: string; values: unknown[] }> = [];
-    const pool = {
-      query: async (text: string, values: unknown[] = []) => {
-        queries.push({ text, values });
-        if (text.includes("FROM factory_events")) {
-          return { rows: [{ event_id: "task-created:run-1", type: "task.created", payload: {}, created_at: "2026-08-06T00:00:00.000Z" }] };
-        }
-        if (text.includes("FROM factory_runs")) {
-          return {
-            rows: [{
-              run_id: "run-1",
-              workflow_id: "factory-run-1",
-              task_id: "run-1",
-              status: "pending",
-              current_node: null,
-              failure_reason: null,
-            }],
-          };
-        }
-        return { rows: [] };
-      },
-    };
-    const store = createFactoryRunStore(pool as never);
+  let available = false;
+
+  beforeAll(async () => {
+    available = await isPostgresAvailable();
+    if (!available) return;
+    await resetTestDatabase();
+  }, 60_000);
+
+  beforeEach(async () => {
+    if (!available) return;
+    await truncateTestTables();
+  });
+
+  afterAll(async () => {
+    if (available) await closeTestDatabase();
+  });
+
+  it("creates a factory run projection and task event", async ({ skip }) => {
+    if (!available) skip();
+    const db = await getTestDatabase();
+    const store = createFactoryRunStore(db);
+
     const runId = await store.createTask({
       repository: "https://github.com/acme/app.git",
       title: "Fix",
@@ -33,21 +34,41 @@ describe("FactoryRunStore", () => {
     });
 
     expect(runId).toMatch(/^[0-9a-f-]{36}$/);
-    expect(queries.some((q) => q.text.includes("INSERT INTO factory_runs"))).toBe(true);
-    expect(queries.some((q) => q.text.includes("INSERT INTO factory_events") && q.values.includes("task.created"))).toBe(true);
+
+    const run = await store.getRun(runId);
+    expect(run).toMatchObject({
+      runId,
+      status: "pending",
+      events: [{
+        type: "task.created",
+        payload: {
+          repository: "https://github.com/acme/app.git",
+          title: "Fix",
+          description: "Do it",
+        },
+      }],
+    });
+
+    const runs = await db.select().from(factoryRuns).where(eq(factoryRuns.runId, runId));
+    const events = await db.select().from(factoryEvents).where(eq(factoryEvents.runId, runId));
+    expect(runs).toHaveLength(1);
+    expect(events.some((event) => event.type === "task.created")).toBe(true);
   });
 
-  it("cancels by updating the factory run projection", async () => {
-    const queries: Array<{ text: string; values: unknown[] }> = [];
-    const store = createFactoryRunStore({
-      query: async (text: string, values: unknown[] = []) => {
-        queries.push({ text, values });
-        return { rows: [] };
-      },
-    } as never);
+  it("cancels by updating the factory run projection", async ({ skip }) => {
+    if (!available) skip();
+    const db = await getTestDatabase();
+    const store = createFactoryRunStore(db);
+    const runId = await store.createTask({
+      repository: "https://github.com/acme/app.git",
+      title: "Fix",
+      description: "Do it",
+    });
 
-    await store.cancelRun("run-1");
+    await store.cancelRun(runId);
 
-    expect(queries.some((q) => q.text.includes("INSERT INTO factory_runs") && q.values.includes("cancelled"))).toBe(true);
+    const [run] = await db.select().from(factoryRuns).where(eq(factoryRuns.runId, runId));
+    expect(run?.status).toBe("cancelled");
+    expect(await store.getRun(runId)).toMatchObject({ status: "cancelled" });
   });
 });

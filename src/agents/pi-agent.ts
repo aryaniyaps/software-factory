@@ -1,32 +1,39 @@
 import { ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentRunner } from "./runner.js";
-import { createContext7Tool } from "./tools.js";
-import { Context7Client } from "../integrations/research.js";
 import { join } from "node:path";
 import { createGondolinSession } from "./gondolin-session.js";
-import { profileForRole } from "./role-profiles.js";
-import { toolsForRole } from "./tool-policy.js";
+import { harnessForRole } from "./role-harness.js";
+import { mcpToolsForRole, toolsForRole } from "./tool-policy.js";
 import { parseCriticReport } from "../assurance/maintainability/findings.js";
 import { withSpan } from "../telemetry/bootstrap.js";
 import { recordToolCall } from "../telemetry/metrics.js";
+import { loadGatewayPolicyFromAllowlist } from "./mcp-gateway.js";
+import { createContext7McpTools } from "./context7-mcp-tools.js";
+import { createGetEvidenceTool, createListEvidenceMetaTool } from "./factory-evidence-tools.js";
 
 export class PiAgentRunner implements AgentRunner {
   async run(input: { role: string; prompt: string; cwd: string; tools: string[]; metadata: Record<string, string> }): Promise<{ text: string; sessionId: string }> {
-    const profile = profileForRole(input.role);
+    const harness = harnessForRole(input.role);
     const allowedTools = toolsForRole(input.role);
-    const modelRuntime = await ModelRuntime.create({ modelsPath: process.env.PI_MODELS_PATH ?? join(input.cwd, "infra/pi/models.json") });
+    const gateway = loadGatewayPolicyFromAllowlist(allowedTools);
+    const factoryRoot = process.env.FACTORY_REPO_ROOT ?? process.cwd();
+    const modelRuntime = await ModelRuntime.create({ modelsPath: process.env.PI_MODELS_PATH ?? join(factoryRoot, "infra/pi/models.json") });
     const model = modelRuntime.getModel("litellm", "factory/default");
+    const mcpToolSet = new Set(mcpToolsForRole(input.role));
     const customTools = [
-      ...(allowedTools.includes("context7") ? [instrumentTool("context7", createContext7Tool(new Context7Client()))] : []),
+      ...createContext7McpTools().filter((tool) => gateway.isAllowed(tool.name) && mcpToolSet.has(tool.name)),
+      ...(mcpToolSet.has("get_evidence") ? [instrumentTool("get_evidence", createGetEvidenceTool())] : []),
+      ...(mcpToolSet.has("list_evidence_meta") ? [instrumentTool("list_evidence_meta", createListEvidenceMetaTool())] : []),
     ];
     const { session, close } = await createGondolinSession({
       cwd: input.cwd,
+      factoryRoot,
       model,
       modelRuntime,
       sessionManager: SessionManager.inMemory(input.cwd),
       tools: allowedTools,
       customTools,
-      thinkingLevel: profile.thinkingLevel,
+      thinkingLevel: harness.thinkingLevel,
       role: input.role,
       resourceRoot: process.env.PI_RESOURCE_ROOT,
     });
@@ -34,7 +41,7 @@ export class PiAgentRunner implements AgentRunner {
     session.subscribe((event) => {
       if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") text += event.assistantMessageEvent.delta;
     });
-    const prompt = `${input.prompt}\nCorrelation metadata: ${JSON.stringify(input.metadata)}`;
+    const prompt = `${input.prompt}\n\nCorrelation metadata: ${JSON.stringify(input.metadata)}`;
     await withSpan("factory.agent.turn", {
       "factory.agent.role": input.role,
       ...Object.fromEntries(Object.entries(input.metadata).map(([key, value]) => [`factory.${key}`, value])),

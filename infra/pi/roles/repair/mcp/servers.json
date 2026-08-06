@@ -1,0 +1,8 @@
+{
+  "servers": [
+    {
+      "id": "context7",
+      "transport": "http"
+    }
+  ]
+}

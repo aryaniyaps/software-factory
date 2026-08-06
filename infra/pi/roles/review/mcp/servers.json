@@ -1,0 +1,12 @@
+{
+  "servers": [
+    {
+      "id": "context7",
+      "transport": "http"
+    },
+    {
+      "id": "factory-evidence",
+      "transport": "in-process"
+    }
+  ]
+}

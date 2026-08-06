@@ -5,5 +5,6 @@ export interface AgentRunner {
     cwd: string;
     tools: string[];
     metadata: Record<string, string>;
+    systemPrompt?: string;
   }): Promise<{ text: string; sessionId: string }>;
 }
