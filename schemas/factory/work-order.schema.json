@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://software-factory.local/schemas/factory/work-order.schema.json",
+  "title": "Work order contract",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["id", "version", "title"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "version": { "type": "integer", "minimum": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "requirements": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^REQ-[A-Z0-9][A-Z0-9-]*$" }
+    },
+    "acceptance": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^AC-[A-Z0-9][A-Z0-9-]*$" }
+    }
+  }
+}

@@ -11,7 +11,8 @@
     "test:run": "vitest run",
     "dev": "tsx src/server.ts",
     "worker": "tsx src/temporal/worker-entry.ts",
-    "bootstrap:pi-resources": "tsx scripts/bootstrap-pi-resources.ts"
+    "bootstrap:pi-resources": "tsx scripts/bootstrap-pi-resources.ts",
+    "factory:contract:check": "tsx scripts/factory-contract-check.ts"
   },
   "dependencies": {
     "@earendil-works/gondolin": "^0.12.0",
@@ -24,7 +25,8 @@
     "koa": "^3.2.1",
     "koa-bodyparser": "^4.4.1",
     "pg": "latest",
-    "typebox": "latest"
+    "typebox": "latest",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@temporalio/testing": "^1.22.0",

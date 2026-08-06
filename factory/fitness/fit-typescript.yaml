@@ -1,0 +1,6 @@
+id: FIT-TYPESCRIPT
+title: TypeScript build and tests pass
+requirements:
+  - REQ-FACTORY-ORCHESTRATION
+  - REQ-EVIDENCE-SPINE
+  - REQ-PRODUCT-GRAPH

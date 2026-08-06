@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://software-factory.local/schemas/factory/factory.schema.json",
+  "title": "Factory manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "product", "version"],
+  "properties": {
+    "schemaVersion": { "const": "factory.v1" },
+    "product": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "minLength": 1 }
+  }
+}

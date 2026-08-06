@@ -1,0 +1,4 @@
+id: SCN-GATE-REPAIR
+title: Gate failure routes to repair
+acceptance:
+  - AC-POLICY-GATE-ROUTING
