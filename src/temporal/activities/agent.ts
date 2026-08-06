@@ -67,22 +67,7 @@ export function createAgentActivities(dependencies: { run: AgentRunner["run"]; m
           operations: profile.hindsightOperations,
         })
         : "";
-      const prompt = buildContextPacket({
-        role: input.role,
-        mode,
-        memoryContext,
-        payload: input.input,
-        predecessors: predecessorOutputs(input.input),
-        evidenceRefs: evidenceRefsFromInput(input.input),
-        errors: compactedErrorsFromInput(input.input),
-      });
-      const result = await dependencies.run({
-        role: input.role,
-        prompt,
-        systemPrompt: promptForRole(input.role, mode, input.worktree.path),
-        cwd: input.worktree.path,
-        tools: toolsForRole(input.role),
-        metadata: {
+      const metadata = {
           ...correlationToAgentMetadata({
             factoryRunId: input.run.runId,
             ticketId: input.run.taskId,
@@ -95,7 +80,23 @@ export function createAgentActivities(dependencies: { run: AgentRunner["run"]; m
             repository: input.run.repository,
           }),
           ...(mode ? { mode } : {}),
-        },
+        };
+      const prompt = `${buildContextPacket({
+        role: input.role,
+        mode,
+        memoryContext,
+        payload: input.input,
+        predecessors: predecessorOutputs(input.input),
+        evidenceRefs: evidenceRefsFromInput(input.input),
+        errors: compactedErrorsFromInput(input.input),
+      })}\n\n<correlation>${JSON.stringify(metadata)}</correlation>`;
+      const result = await dependencies.run({
+        role: input.role,
+        prompt,
+        systemPrompt: promptForRole(input.role, mode, input.worktree.path),
+        cwd: input.worktree.path,
+        tools: toolsForRole(input.role),
+        metadata,
       });
       if (dependencies.memory && profile.hindsightOperations.includes("retain")) {
         await dependencies.memory.retainOutcome({

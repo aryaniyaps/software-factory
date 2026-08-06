@@ -10,7 +10,11 @@ The factory uses Pi sessions for judgment inside Gondolin. A single mutable agen
 
 ## Decision
 
-The factory owns a versioned Pi resource manifest and installs it into a dedicated filesystem directory. Gondolin mounts that directory read-only. Every Pi session creates a fresh `DefaultResourceLoader` with only the selected role's skill paths, tools, extensions, Hindsight mental models, and web policy.
+The factory owns a versioned Pi resource manifest and installs it into a dedicated filesystem directory. Gondolin mounts that directory read-only. Every Pi session creates a fresh `DefaultResourceLoader` scoped to `PI_RESOURCE_ROOT/roles/<role>/` with only that role's skills, allowlisted tools, extensions, Hindsight mental models, and web policy.
+
+Per-role harness data lives in `src/agents/role-harness.ts`. Bootstrap (`npm run bootstrap:pi-resources`) materializes `roles/<role>/` trees with skills, `prompts/system.md`, `mcp/servers.json`, and `policy/mcp-gateway.yaml`. Context7 MCP is bridged for all roles; `factory-evidence` MCP is limited to review and maintainability_critic.
+
+System prompts are injected via Pi `systemPrompt` override. User turns receive a structured context packet from `src/agents/context-packet.ts` (Factor 3/13).
 
 Hindsight is scoped to organization/project banks. Repository, run, role, and phase tags provide isolation inside a bank. Missions, directives, and mental models are bootstrapped from versioned repository configuration. Agent outputs are retained with idempotent correlation document IDs.
 
@@ -20,7 +24,7 @@ Koa owns HTTP parsing and lifecycle; it does not schedule Temporal work or execu
 
 ## Consequences
 
-- Capability review is a data change in `src/agents/role-profiles.ts` (skills, memory policy) and `src/agents/tool-policy.ts` (Pi tool allowlists), not scattered conditional logic.
+- Capability review is a data change in `src/agents/role-harness.ts` (skills, memory, MCP, tools), not scattered conditional logic.
 - Adding a skill or package requires a manifest and filesystem verification.
 - Hindsight context is richer and reusable across repositories without mixing run-specific memories.
 - Role sessions are slightly more expensive because loaders and memory packets are not shared.
