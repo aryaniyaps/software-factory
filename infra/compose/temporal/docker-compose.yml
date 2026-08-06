@@ -14,7 +14,7 @@ services:
       retries: 10
 
   temporal:
-    image: temporalio/auto-setup:latest
+    image: temporalio/auto-setup:1.29.3
     environment:
       DB: postgresql
       DB_PORT: 5432
@@ -44,7 +44,7 @@ services:
         condition: service_started
 
   temporal-ui:
-    image: temporalio/ui:latest
+    image: temporalio/ui:2.44.1
     environment:
       TEMPORAL_ADDRESS: temporal:7233
     ports:

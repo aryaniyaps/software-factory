@@ -1,6 +1,7 @@
 import type { AgentRunner } from "../../agents/agent-node.js";
 import { toolsForRole } from "../../agents/tool-policy.js";
 import type { WorkspaceProvider } from "../../workspaces/provider.js";
+import { workspaceSpecForRole } from "../../security/capability-policy.js";
 import { securityGate } from "../../gates/security-gate.js";
 import type { FactoryActivities } from "./types.js";
 import { parseAgentOutput } from "../../contracts/nodes.js";
@@ -23,7 +24,7 @@ export function createProductionActivities(dependencies: ProductionActivityDepen
     createWorktree: dependencies.createWorktree,
     removeWorktree: dependencies.removeWorktree,
     securityScan: async (input) => {
-      const workspace = await dependencies.workspace.create({ path: input.worktree.path, network: "none" });
+      const workspace = await dependencies.workspace.create(workspaceSpecForRole(input.worktree.path, "security_scan"));
       try {
         const result = await dependencies.workspace.exec(workspace.id, "git", ["ls-files"], { cwd: "/workspace" });
         if (result.exitCode !== 0) return { passed: false, findings: [result.stderr] };
@@ -49,7 +50,7 @@ export function createProductionActivities(dependencies: ProductionActivityDepen
       return { sessionId: result.sessionId, output: parseAgentOutput(result.text) };
     },
     runChecks: async (input) => {
-      const workspace = await dependencies.workspace.create({ path: input.worktree.path, network: "restricted" });
+      const workspace = await dependencies.workspace.create(workspaceSpecForRole(input.worktree.path, "implementer"));
       try {
         const result = await dependencies.workspace.exec(workspace.id, "npm", ["test", "--", "--run"], { cwd: "/workspace", timeoutMs: 30 * 60_000 });
         return { passed: result.exitCode === 0, output: `${result.stdout}\n${result.stderr}` };

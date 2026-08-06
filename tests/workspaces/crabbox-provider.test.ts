@@ -14,18 +14,19 @@ describe("CrabboxWorkspaceProvider", () => {
     const runtime: CrabboxRuntime = { warm: async () => lease };
     const provider = new CrabboxWorkspaceProvider(runtime);
 
-    const workspace = await provider.create({ path: "/worktree", network: "restricted" });
+    const workspace = await provider.create({ path: "/worktree", network: "none", role: "implementer" });
     await expect(provider.exec(workspace.id, "npm", ["test"])).resolves.toMatchObject({ exitCode: 0 });
     await provider.destroy(workspace.id);
 
     expect(calls).toEqual(["exec", "stop"]);
   });
 
-  it("rejects privileged workspaces and unknown IDs", async () => {
+  it("rejects privileged workspaces, unknown IDs, and disallowed networks", async () => {
     const runtime: CrabboxRuntime = { warm: async () => ({ id: "lease", exec: async () => ({ exitCode: 0, stdout: "", stderr: "" }), copyBack: async () => {}, stop: async () => {} }) };
     const provider = new CrabboxWorkspaceProvider(runtime);
 
-    await expect(provider.create({ path: "/worktree", network: "restricted", privileged: true })).rejects.toThrow("privileged");
+    await expect(provider.create({ path: "/worktree", network: "restricted", privileged: true, role: "builder" })).rejects.toThrow("privileged");
+    await expect(provider.create({ path: "/worktree", network: "restricted", role: "implementer" })).rejects.toThrow("network restricted is not allowed");
     await expect(provider.exec("missing", "npm", ["test"])).rejects.toThrow("unknown workspace");
   });
 });

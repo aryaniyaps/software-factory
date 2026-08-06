@@ -61,6 +61,8 @@ export interface BuildInput {
 export interface ArtifactResult {
   image: string;
   digest: string;
+  sbomSha256?: string;
+  provenanceSignature?: string;
 }
 
 export interface DeployInput {

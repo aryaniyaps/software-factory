@@ -3,10 +3,13 @@ import { createCrabboxActivityRuntime } from "../../src/temporal/activities/crab
 import type { WorkspaceProvider } from "../../src/workspaces/provider.js";
 
 describe("Crabbox Activity runtime", () => {
-  it("creates restricted workspaces and closes them once", async () => {
+  it("creates default-deny workspaces and closes them once", async () => {
     const calls: string[] = [];
     const provider: WorkspaceProvider = {
-      create: async (spec) => { expect(spec).toMatchObject({ path: "/worktree", network: "restricted", privileged: false }); return { id: "lease-1" }; },
+      create: async (spec) => {
+        expect(spec).toMatchObject({ path: "/worktree", network: "none", privileged: false, role: "implementer" });
+        return { id: "lease-1" };
+      },
       exec: async () => { calls.push("exec"); return { exitCode: 0, stdout: "ok", stderr: "" }; },
       destroy: async () => { calls.push("destroy"); },
     };
@@ -18,6 +21,20 @@ describe("Crabbox Activity runtime", () => {
     await vm.close();
 
     expect(calls).toEqual(["exec", "destroy"]);
+  });
+
+  it("uses builder network allowlist for artifact builds", async () => {
+    const provider: WorkspaceProvider = {
+      create: async (spec) => {
+        expect(spec).toMatchObject({ network: "restricted", role: "builder" });
+        return { id: "lease-1" };
+      },
+      exec: async () => ({ exitCode: 0, stdout: "", stderr: "" }),
+      destroy: async () => {},
+    };
+    await expect(
+      createCrabboxActivityRuntime(provider).createForWorktree({ path: "/worktree", sandboxProfile: "crabbox", role: "builder" }),
+    ).resolves.toBeDefined();
   });
 
   it("rejects non-Crabbox profiles", async () => {
