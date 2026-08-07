@@ -22,9 +22,13 @@ const requiredTables = [
   "evidence_manifests",
   "factory_event_outbox",
   "probe_runs",
+  "factory_messages",
+  "factory_clarifications",
+  "factory_claim_revisions",
+  "a2a_tasks",
 ];
 
-describe("baseline migration smoke test", () => {
+describe("migration smoke test", () => {
   let available = false;
 
   beforeAll(async () => {
@@ -40,7 +44,12 @@ describe("baseline migration smoke test", () => {
 
     await rebuildTestDatabase();
 
-    const schema = await readFile(new URL("../../drizzle/0000_soft_otto_octavius.sql", import.meta.url), "utf8");
+    const schema = (await Promise.all([
+      "0000_soft_otto_octavius.sql",
+      "0001_supreme_pandemic.sql",
+      "0002_bored_dark_beast.sql",
+      "0003_greedy_kate_bishop.sql",
+    ].map((file) => readFile(new URL(`../../drizzle/${file}`, import.meta.url), "utf8")))).join("\n");
     for (const table of requiredTables) {
       expect(schema).toContain(table);
     }

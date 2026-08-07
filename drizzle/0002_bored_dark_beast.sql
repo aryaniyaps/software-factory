@@ -1,0 +1,2 @@
+DROP INDEX "factory_messages_thread_sequence_idx";--> statement-breakpoint
+CREATE UNIQUE INDEX "factory_messages_thread_sequence_uidx" ON "factory_messages" USING btree ("run_id","thread_id","sequence");

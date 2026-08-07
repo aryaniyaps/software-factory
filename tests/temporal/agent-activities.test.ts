@@ -27,4 +27,51 @@ describe("agent Activities", () => {
       },
     });
   });
+
+  it("records the complete agent turn before returning", async () => {
+    const recorded: unknown[] = [];
+    const activities = createAgentActivities({
+      run: async () => ({
+        sessionId: "session-1",
+        text: JSON.stringify({
+          schemaVersion: "agent-output.v1",
+          role: "discovery_plan",
+          status: "succeeded",
+          summary: "planned",
+          evidenceRefs: ["ev-1"],
+          data: { steps: ["implement"] },
+        }),
+      }),
+      sessions: {
+        async recordTurn(input) {
+          recorded.push(input);
+        },
+      },
+    });
+
+    await activities.runAgent({
+      run: {
+        runId: "run",
+        taskId: "task",
+        repository: "/repo",
+        baseBranch: "main",
+        workflow: "feature",
+        deploymentProfile: "staging",
+        sandboxProfile: "crabbox",
+      },
+      worktree: { path: "/worktree", branch: "factory/run/task/1" },
+      role: "discovery_plan",
+      input: { task: "plan it" },
+    });
+
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({
+      runId: "run",
+      sessionId: "session-1",
+      role: "discovery_plan",
+      turnIndex: 0,
+      prompt: expect.stringContaining("<task>"),
+      output: expect.stringContaining('"role":"discovery_plan"'),
+    });
+  });
 });

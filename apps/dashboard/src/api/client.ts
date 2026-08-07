@@ -79,3 +79,18 @@ export function rerunNode(runId: string, node: string): Promise<OperationRespons
     body: JSON.stringify({ node }),
   });
 }
+
+export function answerClarification(
+  runId: string,
+  requestId: string,
+  answer: string,
+  stateRevision: number,
+): Promise<OperationResponse> {
+  return request<OperationResponse>(
+    `/factory/runs/${runId}/clarifications/${requestId}/answer`,
+    {
+      method: "POST",
+      body: JSON.stringify({ answer, stateRevision }),
+    },
+  );
+}

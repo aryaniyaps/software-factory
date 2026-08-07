@@ -9,7 +9,7 @@ Each run walks a fixed node graph. Agent nodes use Pi sessions inside Gondolin w
 ```mermaid
 flowchart LR
   prep[prepare_repository] --> wt[create_worktree] --> sec[security_scan]
-  sec --> scout --> plan --> impl[implement]
+  sec --> discoveryPlan[discovery_plan] --> impl[implement]
   impl --> checks[deterministic_checks] --> maint[maintainability_assess]
   checks -.->|repair loop| checks
   maint -.->|refactor loop| maint
@@ -44,9 +44,8 @@ Model selection uses `FACTORY_MODEL` (and optional `FACTORY_MODEL_<ROLE>` overri
 |------|----|------|-------------------|
 | `prepare_repository` | `create_worktree` | ok | skipped when `continuation.worktree` is set |
 | `create_worktree` | `security_scan` | ok | same skip as above |
-| `security_scan` | `scout` | pass | `security.passed`; max 2 attempts |
-| `scout` | `plan` | ok | agent `succeeded`; max 2 attempts |
-| `plan` | `implement` | ok | agent `succeeded`; max 2 attempts |
+| `security_scan` | `discovery_plan` | pass | `security.passed`; max 2 attempts |
+| `discovery_plan` | `implement` | ok | evidence-backed plan succeeded; max 2 attempts |
 | `implement` | `deterministic_checks` | ok | agent `succeeded` |
 | `deterministic_checks` | `maintainability_assess` | pass | all checks passed |
 | `deterministic_checks` | `repair` | fail | while `repairAttempts ≤ 2` |
@@ -100,7 +99,7 @@ npm run build
 npm run bootstrap:pi-resources
 
 # 6. Start API and worker (two terminals)
-npm run dev       # API on FACTORY_PORT (default 8787)
+npm run dev       # API on 8787; A2A v1 endpoint on FACTORY_A2A_PORT (default 8788)
 npm run worker    # requires FACTORY_WORKER_MODULE=dist/src/temporal/production-worker.js
 ```
 
@@ -148,7 +147,7 @@ Resolution lives in [`src/agents/model-resolver.ts`](src/agents/model-resolver.t
 
 ## Local dashboard
 
-A minimal Vite + React dashboard lives at `apps/dashboard/` for local run monitoring (list runs, create tasks, live pipeline graph, cancel/rerun). It proxies API calls to the factory server — no CORS changes required.
+A Vite + React dashboard lives at `apps/dashboard/` for local run monitoring. Task intake is one free-form prompt; title, description, acceptance context, and repository defaults are inferred. The dashboard shows the unified discovery-plan node and lets an operator answer clarification requests before the workflow resumes.
 
 ```bash
 # Terminal 1 — infrastructure + API
@@ -169,6 +168,18 @@ Build the dashboard for a production bundle check:
 ```bash
 npm run dashboard:build
 ```
+
+## Agent-to-agent API
+
+The server also exposes an A2A v1 Agent Card and JSON-RPC endpoint on
+`FACTORY_A2A_PORT` (default `8788`). Remote product-manager agents can submit
+free-form engineering tasks, stream task state, cancel work, and answer
+`TASK_STATE_INPUT_REQUIRED` clarification messages. When `FACTORY_API_TOKEN` is
+configured, send the same bearer token to the A2A endpoint.
+
+Internal factory nodes do not run A2A servers. They communicate through
+Temporal-routed clarification turns, an append-only conversation ledger, and
+versioned evidence so retries and replanning remain deterministic.
 
 ## Start a run
 

@@ -169,6 +169,8 @@ export interface TaskStatusInput {
   taskId: string;
   status: string;
   runId: string;
+  currentNode?: string;
+  failureReason?: string;
 }
 
 export interface CollectRepositoryChurnInput {
@@ -285,6 +287,7 @@ export interface FactoryActivities {
   rollbackDeployment(input: RollbackDeploymentInput): Promise<RollbackDeploymentResult>;
   healthCheck(input: HealthCheckInput): Promise<{ healthy: boolean; url: string }>;
   updateTaskStatus(input: TaskStatusInput): Promise<void>;
+  recordFactoryEvent(input: { runId: string; eventId: string; type: string; payload: unknown }): Promise<void>;
   collectRepositoryChurn(input: CollectRepositoryChurnInput): Promise<CollectRepositoryChurnResult>;
   collectRepositoryCoChanges(input: CollectRepositoryCoChangesInput): Promise<CollectRepositoryCoChangesResult>;
   sampleNightlyProbes(input: SampleNightlyProbesInput): Promise<SampleNightlyProbesResult>;
@@ -312,6 +315,7 @@ export declare function observeDeployment(input: ObserveDeploymentInput): Promis
 export declare function rollbackDeployment(input: RollbackDeploymentInput): Promise<RollbackDeploymentResult>;
 export declare function healthCheck(input: HealthCheckInput): Promise<{ healthy: boolean; url: string }>;
 export declare function updateTaskStatus(input: TaskStatusInput): Promise<void>;
+export declare function recordFactoryEvent(input: { runId: string; eventId: string; type: string; payload: unknown }): Promise<void>;
 export declare function collectRepositoryChurn(input: CollectRepositoryChurnInput): Promise<CollectRepositoryChurnResult>;
 export declare function collectRepositoryCoChanges(input: CollectRepositoryCoChangesInput): Promise<CollectRepositoryCoChangesResult>;
 export declare function sampleNightlyProbes(input: SampleNightlyProbesInput): Promise<SampleNightlyProbesResult>;

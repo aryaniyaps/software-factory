@@ -19,10 +19,12 @@ export interface FactoryWorkflowInput {
   attemptId?: string;
   organization?: string;
   project?: string;
+  protocolVersion?: 2;
 }
 
 export interface WorkflowHandleLike {
   signal(name: string, ...args: unknown[]): Promise<void>;
+  query?<T = unknown>(name: string, ...args: unknown[]): Promise<T>;
 }
 
 export interface WorkflowClientLike {
@@ -37,6 +39,14 @@ export async function startFactoryWorkflow(client: WorkflowClientLike, input: Fa
     workflowId: `factory-${input.runId}`,
     taskQueue: TASK_QUEUES.control,
     args: [input],
+  });
+}
+
+export async function startFactoryWorkflowV2(client: WorkflowClientLike, input: FactoryWorkflowInput): Promise<unknown> {
+  return client.workflow.start("factoryWorkflow", {
+    workflowId: `factory-${input.runId}`,
+    taskQueue: TASK_QUEUES.control,
+    args: [{ ...input, protocolVersion: 2 }],
   });
 }
 

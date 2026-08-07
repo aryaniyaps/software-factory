@@ -19,6 +19,9 @@ describe("RoleHarnessSpec", () => {
   });
 
   it("uses allowlist-only tool registration semantics", () => {
+    expect(allToolsForRole("discovery_plan")).toEqual([
+      "read", "grep", "find", "ls", "web_search", "resolve-library-id", "query-docs",
+    ]);
     expect(allToolsForRole("scout")).toEqual([
       "read", "grep", "find", "ls", "web_search", "resolve-library-id", "query-docs",
     ]);
@@ -36,9 +39,10 @@ describe("RoleHarnessSpec", () => {
   });
 
   it("allows escalate_to_human only on selected roles", () => {
+    expect(canEscalateToHuman("discovery_plan")).toBe(true);
     expect(canEscalateToHuman("plan")).toBe(true);
     expect(canEscalateToHuman("repair")).toBe(true);
-    expect(canEscalateToHuman("implement")).toBe(false);
+    expect(canEscalateToHuman("implement")).toBe(true);
   });
 
   it("denies tools outside the gateway allowlist", () => {

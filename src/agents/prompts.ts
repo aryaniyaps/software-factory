@@ -20,6 +20,7 @@ const promptsDir = resolvePromptsDir();
 const PROMPT_FILES: Record<string, string> = {
   scout: "scout.md",
   plan: "plan.md",
+  discovery_plan: "discovery-plan.md",
   implement: "implement.md",
   repair: "repair.md",
   "repair:maintainability_refactor": "repair-maintainability.md",
@@ -40,7 +41,7 @@ function tryRead(path: string): string | undefined {
 }
 
 /** Prefer bootstrapped / repo harness system prompts (JSON contract) over short legacy stubs. */
-export function promptForRole(role: string, mode?: string, cwd?: string): string {
+export function promptForRole(role: string, mode?: string, _cwd?: string): string {
   if (role === "repair" && mode === "maintainability_refactor") {
     return loadPrompt(PROMPT_FILES["repair:maintainability_refactor"]);
   }
@@ -50,10 +51,6 @@ export function promptForRole(role: string, mode?: string, cwd?: string): string
   const resourceRoot = process.env.PI_RESOURCE_ROOT?.trim();
   if (resourceRoot) {
     candidates.push(join(roleAgentDir(resourceRoot, role, "bootstrapped"), harness.systemPromptPath));
-  }
-  if (cwd) {
-    candidates.push(join(roleAgentDir(cwd, role, "bootstrapped"), harness.systemPromptPath));
-    candidates.push(join(roleAgentDir(cwd, role, "repo"), harness.systemPromptPath));
   }
   candidates.push(join(process.cwd(), "infra/pi/roles", role, harness.systemPromptPath));
 

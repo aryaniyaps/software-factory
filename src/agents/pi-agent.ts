@@ -1,5 +1,5 @@
 import { ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
-import type { AgentRunner } from "./runner.js";
+import type { AgentRunner, AgentToolCallRecord } from "./runner.js";
 import { createGondolinSession } from "./gondolin-session.js";
 import { resolveModel } from "./model-resolver.js";
 import { harnessForRole } from "./role-harness.js";
@@ -19,7 +19,7 @@ export class PiAgentRunner implements AgentRunner {
     tools: string[];
     metadata: Record<string, string>;
     systemPrompt?: string;
-  }): Promise<{ text: string; sessionId: string }> {
+  }): Promise<{ text: string; sessionId: string; toolCalls: AgentToolCallRecord[] }> {
     const harness = harnessForRole(input.role);
     const allowedTools = toolsForRole(input.role);
     const gateway = loadGatewayPolicyFromAllowlist(allowedTools);
@@ -54,8 +54,31 @@ export class PiAgentRunner implements AgentRunner {
       systemPrompt: input.systemPrompt,
     });
     let text = "";
+    const activeToolCalls = new Map<string, Omit<AgentToolCallRecord, "status" | "output" | "completedAt">>();
+    const toolCalls: AgentToolCallRecord[] = [];
     session.subscribe((event) => {
       if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") text += event.assistantMessageEvent.delta;
+      if (event.type === "tool_execution_start") {
+        activeToolCalls.set(event.toolCallId, {
+          callId: event.toolCallId,
+          toolName: event.toolName,
+          input: event.args,
+          startedAt: new Date().toISOString(),
+        });
+      }
+      if (event.type === "tool_execution_end") {
+        const started = activeToolCalls.get(event.toolCallId);
+        toolCalls.push({
+          callId: event.toolCallId,
+          toolName: event.toolName,
+          status: event.isError ? "failed" : "succeeded",
+          input: started?.input ?? {},
+          output: event.result,
+          startedAt: started?.startedAt ?? new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+        });
+        activeToolCalls.delete(event.toolCallId);
+      }
     });
     await withSpan("factory.agent.turn", {
       "factory.agent.role": input.role,
@@ -66,7 +89,11 @@ export class PiAgentRunner implements AgentRunner {
       await session.prompt(input.prompt);
     });
     close();
-    return { text: normalizeAgentText(input.role, text), sessionId: session.sessionId };
+    return {
+      text: normalizeAgentText(input.role, text),
+      sessionId: session.sessionId,
+      toolCalls,
+    };
   }
 }
 

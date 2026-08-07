@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import * as api from "./api/client";
 import { CreateTaskForm } from "./components/CreateTaskForm";
+import { ClarificationPanel } from "./components/ClarificationPanel";
 import { OutcomeStrip } from "./components/OutcomeStrip";
 import { PipelineGraph } from "./components/PipelineGraph";
 import { RunList } from "./components/RunList";
 import { useRunDetail, useRunsList } from "./hooks/useRuns";
 import "./styles/tokens.css";
 import "./styles/app.css";
+import type { ClarificationRequest, RunEvent } from "./types";
 
 export function App() {
   const { runs, error: runsError, loading: runsLoading, refresh: refreshRuns } = useRunsList(2000);
@@ -28,7 +30,7 @@ export function App() {
   }, []);
 
   const handleCreateTask = useCallback(
-    async (input: { repository: string; title: string; description: string }) => {
+    async (input: { prompt: string }) => {
       const { id } = await api.createTask(input);
       await refreshRuns();
       setSelectedRunId(id);
@@ -65,8 +67,20 @@ export function App() {
   }, [selectedRunId, selectedNode, refreshRuns, refreshDetail]);
 
   const error = runsError ?? detailError ?? actionError;
+  const pendingClarification = latestPendingClarification(detail?.events ?? []);
   const canCancel = Boolean(selectedRunId) && (isRunning || detail?.summary.status === "running");
   const canRerun = Boolean(selectedRunId && selectedNode);
+
+  const handleClarificationAnswer = useCallback(async (answer: string) => {
+    if (!selectedRunId || !pendingClarification) return;
+    await api.answerClarification(
+      selectedRunId,
+      pendingClarification.requestId,
+      answer,
+      pendingClarification.stateRevision,
+    );
+    await Promise.all([refreshRuns(), refreshDetail()]);
+  }, [selectedRunId, pendingClarification, refreshRuns, refreshDetail]);
 
   return (
     <div className="app">
@@ -149,6 +163,13 @@ export function App() {
             loading={Boolean(selectedRunId) && detailLoading && !detail}
           />
 
+          {pendingClarification && (
+            <ClarificationPanel
+              request={pendingClarification}
+              onAnswer={handleClarificationAnswer}
+            />
+          )}
+
           <OutcomeStrip
             graph={detail?.graph ?? null}
             events={detail?.events ?? []}
@@ -158,4 +179,19 @@ export function App() {
       </div>
     </div>
   );
+}
+
+function latestPendingClarification(events: RunEvent[]): ClarificationRequest | null {
+  const answered = new Set(
+    events
+      .filter((event) => event.type === "clarification.answered")
+      .map((event) => (event.payload as { requestId?: string } | null)?.requestId)
+      .filter((id): id is string => Boolean(id)),
+  );
+  for (const event of [...events].reverse()) {
+    if (event.type !== "clarification.requested") continue;
+    const request = event.payload as ClarificationRequest;
+    if (request?.requestId && !answered.has(request.requestId)) return request;
+  }
+  return null;
 }

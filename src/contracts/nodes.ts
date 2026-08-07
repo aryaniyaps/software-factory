@@ -2,15 +2,23 @@ import { Type, type Static, type TSchema } from "typebox";
 import { Check, Errors } from "typebox/value";
 import { parseCriticReport } from "../assurance/maintainability/findings.js";
 import { FailureEnvelopeSchema, type FailureEnvelope } from "./failures.js";
+import { ClarificationRequestSchema, type ClarificationRequest } from "./clarification.js";
 
 export const FACTORY_NODE_NAMES = [
   "prepare_repository", "create_worktree", "security_scan", "scout", "plan", "implement",
   "deterministic_checks", "repair", "maintainability_assess", "behavioral_verify", "review", "build_artifact", "release_controller",
 ] as const;
-export const FactoryNodeNameSchema = Type.Union(FACTORY_NODE_NAMES.map((name) => Type.Literal(name)) as TSchema[]);
-export type FactoryNodeName = (typeof FACTORY_NODE_NAMES)[number];
+export const FACTORY_NODE_NAMES_V2 = [
+  "prepare_repository", "create_worktree", "security_scan", "discovery_plan", "implement",
+  "deterministic_checks", "repair", "maintainability_assess", "behavioral_verify", "review", "build_artifact", "release_controller",
+] as const;
+const AllFactoryNodeNames = [...new Set([...FACTORY_NODE_NAMES, ...FACTORY_NODE_NAMES_V2])] as const;
+export const FactoryNodeNameSchema = Type.Union(AllFactoryNodeNames.map((name) => Type.Literal(name)) as TSchema[]);
+export type FactoryNodeName = (typeof AllFactoryNodeNames)[number];
+export const FactoryNodeNameV2Schema = Type.Union(FACTORY_NODE_NAMES_V2.map((name) => Type.Literal(name)) as TSchema[]);
+export type FactoryNodeNameV2 = (typeof FACTORY_NODE_NAMES_V2)[number];
 
-export const AgentRoles = ["scout", "plan", "implement", "repair", "review", "maintainability_critic"] as const;
+export const AgentRoles = ["scout", "plan", "discovery_plan", "implement", "repair", "review", "maintainability_critic"] as const;
 export const AgentRoleSchema = Type.Union(AgentRoles.map((role) => Type.Literal(role)) as TSchema[]);
 export type AgentRole = (typeof AgentRoles)[number];
 
@@ -107,23 +115,25 @@ export const FactoryRunStateSchema = Type.Object({
   runId: Type.String({ minLength: 1 }),
   status: Type.Union([
     Type.Literal("running"), Type.Literal("succeeded"), Type.Literal("rolled_back"),
-    Type.Literal("failed"), Type.Literal("cancelled"),
+    Type.Literal("failed"), Type.Literal("cancelled"), Type.Literal("input_required"),
   ]),
   completedNodes: Type.Array(FactoryNodeNameSchema),
   nodeAttempts: Type.Array(NodeAttemptRefSchema),
   currentNode: Type.Optional(FactoryNodeNameSchema),
   failedNode: Type.Optional(FactoryNodeNameSchema),
+  pendingClarification: Type.Optional(ClarificationRequestSchema),
   budget: Type.Optional(WorkflowBudgetStateSchema),
   continuationGeneration: Type.Optional(Type.Integer({ minimum: 0 })),
 }, { additionalProperties: false });
 export interface FactoryRunState {
   readonly schemaVersion: "factory-run.v1";
   readonly runId: string;
-  readonly status: "running" | "succeeded" | "rolled_back" | "failed" | "cancelled";
+  readonly status: "running" | "succeeded" | "rolled_back" | "failed" | "cancelled" | "input_required";
   readonly completedNodes: readonly FactoryNodeName[];
   readonly nodeAttempts: readonly NodeAttemptRef[];
   readonly currentNode?: FactoryNodeName;
   readonly failedNode?: FactoryNodeName;
+  readonly pendingClarification?: ClarificationRequest;
   readonly budget?: WorkflowBudgetState;
   readonly continuationGeneration?: number;
 }

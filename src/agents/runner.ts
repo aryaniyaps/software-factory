@@ -6,5 +6,19 @@ export interface AgentRunner {
     tools: string[];
     metadata: Record<string, string>;
     systemPrompt?: string;
-  }): Promise<{ text: string; sessionId: string }>;
+  }): Promise<{
+    text: string;
+    sessionId: string;
+    toolCalls?: AgentToolCallRecord[];
+  }>;
+}
+
+export interface AgentToolCallRecord {
+  callId: string;
+  toolName: string;
+  status: "succeeded" | "failed";
+  input: unknown;
+  output: unknown;
+  startedAt: string;
+  completedAt: string;
 }

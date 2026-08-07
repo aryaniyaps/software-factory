@@ -9,6 +9,7 @@ export const DEFAULT_FACTORY_MODEL_ID = "gpt-5.6-luna";
 const ROLE_MODEL_ENV_KEYS: Record<AgentRole, string> = {
   scout: "FACTORY_MODEL_SCOUT",
   plan: "FACTORY_MODEL_PLAN",
+  discovery_plan: "FACTORY_MODEL_DISCOVERY_PLAN",
   implement: "FACTORY_MODEL_IMPLEMENT",
   repair: "FACTORY_MODEL_REPAIR",
   review: "FACTORY_MODEL_REVIEW",

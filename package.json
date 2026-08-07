@@ -25,8 +25,9 @@
     "dashboard:build": "npm run build --prefix apps/dashboard"
   },
   "dependencies": {
+    "@a2a-js/sdk": "^1.0.1",
     "@earendil-works/gondolin": "^0.12.0",
-    "@earendil-works/pi-coding-agent": "0.83.0",
+    "@earendil-works/pi-coding-agent": "^0.84.1",
     "@koa/router": "^15.7.0",
     "@modelcontextprotocol/client": "^2.0.0",
     "@octokit/graphql": "^9.0.4",
@@ -44,6 +45,7 @@
     "@temporalio/workflow": "^1.22.0",
     "@vectorize-io/hindsight-client": "0.8.6",
     "drizzle-orm": "^0.45.2",
+    "express": "^5.2.1",
     "koa": "^3.2.1",
     "koa-bodyparser": "^4.4.1",
     "pg": "8.22.0",
@@ -55,6 +57,7 @@
     "@stryker-mutator/typescript-checker": "^8.7.1",
     "@stryker-mutator/vitest-runner": "^8.7.1",
     "@temporalio/testing": "^1.22.0",
+    "@types/express": "^5.0.6",
     "@types/koa": "^3.0.3",
     "@types/koa__router": "^12.0.5",
     "@types/koa-bodyparser": "^4.3.13",

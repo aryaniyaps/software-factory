@@ -8,13 +8,13 @@ web
 
 ## Users
 
-Primary user: a factory operator running the self-hosted stack locally (or equivalent). They start tasks (repository + title + acceptance criteria), watch the live pipeline graph, cancel runs, rerun nodes, and decide what to do when a run succeeds, fails, rolls back, or is cancelled.
+Primary user: a factory operator running the self-hosted stack locally (or equivalent). They start tasks from one free-form prompt, review inferred task context, answer clarification requests, watch the live pipeline graph, cancel runs, rerun nodes, and decide what to do when a run succeeds, fails, rolls back, or is cancelled.
 
 The dashboard and HTTP API serve that operating loop. End customers of software the factory builds are out of scope for this product surface.
 
 ## Product Purpose
 
-Software Factory is a production-only, graph-oriented software factory. It accepts an engineering task against a git repository, isolates work in a Crabbox-backed worktree, and walks a fixed Temporal node graph through scout → plan → implement → deterministic checks → maintainability assessment → behavioral verify → review → build → canary release (with repair and refactor loops where policy allows).
+Software Factory is a production-only, graph-oriented software factory. It accepts an engineering task against a git repository, isolates work in a Crabbox-backed worktree, and walks a fixed Temporal node graph through discovery-plan → implement → deterministic checks → maintainability assessment → behavioral verify → review → build → canary release (with clarification, repair, and refactor loops where policy allows).
 
 Success means a run reaches a correct terminal outcome with durable evidence: promote when gates pass, otherwise fail, roll back, or cancel — never a silent host-process shortcut.
 

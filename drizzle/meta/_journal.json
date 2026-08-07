@@ -8,6 +8,27 @@
       "when": 1786038833277,
       "tag": "0000_soft_otto_octavius",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786109722110,
+      "tag": "0001_supreme_pandemic",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786110836415,
+      "tag": "0002_bored_dark_beast",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786112263308,
+      "tag": "0003_greedy_kate_bishop",
+      "breakpoints": true
     }
   ]
 }

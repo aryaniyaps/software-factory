@@ -1,13 +1,17 @@
 import {
   ApplicationFailure,
+  condition,
   continueAsNew,
   defineQuery,
   defineSignal,
   proxyActivities,
   setHandler,
+  uuid4,
 } from "@temporalio/workflow";
 import type * as activities from "../activities/types.js";
 import type { AgentActivityResult } from "../activities/types.js";
+import type { AgentOutput } from "../../contracts/nodes.js";
+import type { ClarificationAnswer, ClarificationRequest } from "../../contracts/clarification.js";
 import type { FactoryNodeName } from "../../contracts/nodes.js";
 import { DEFAULT_WORKFLOW_BUDGET } from "../../policy/retry-policy.js";
 import { assessMaintainability, DEFAULT_MAINTAINABILITY_POLICY } from "../../assurance/maintainability/policy.js";
@@ -48,6 +52,7 @@ const verifierActivity = proxyActivities<typeof activities>({ ...activityOptions
 export const cancelFactorySignal = defineSignal("cancelFactory");
 export const rerunNodeSignal = defineSignal<[FactoryNodeName]>("rerunNode");
 export const rollbackReleaseSignal = defineSignal("rollbackRelease");
+export const answerClarificationSignal = defineSignal<[ClarificationAnswer]>("answerClarification");
 export const factoryStatusQuery = defineQuery<FactoryWorkflowState>("factoryStatus");
 
 function agentSucceeded(output: { status: "succeeded" | "failed" | "escalate_to_human"; summary: string }): boolean {
@@ -68,6 +73,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     nodeAttempts: FactoryWorkflowState["nodeAttempts"];
     currentNode?: FactoryNodeName;
     failedNode?: FactoryNodeName;
+    pendingClarification?: ClarificationRequest;
     continuationGeneration: number;
     budget: typeof DEFAULT_WORKFLOW_BUDGET;
   } = {
@@ -78,13 +84,23 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     continuationGeneration: continuation?.continuationGeneration ?? 0,
     budget: continuation?.budget ?? { ...DEFAULT_WORKFLOW_BUDGET },
   };
+  const attemptsAtGenerationStart = state.nodeAttempts.length;
 
   let cancelled = false;
   let pendingRollback = false;
   let pendingRerun: FactoryNodeName | undefined;
+  let pendingAnswer: ClarificationAnswer | undefined;
   setHandler(cancelFactorySignal, () => { cancelled = true; });
   setHandler(rollbackReleaseSignal, () => { pendingRollback = true; });
   setHandler(rerunNodeSignal, (node) => { pendingRerun = node; });
+  setHandler(answerClarificationSignal, (answer) => {
+    if (
+      state.pendingClarification?.requestId === answer.requestId
+      && state.pendingClarification.stateRevision === answer.stateRevision
+    ) {
+      pendingAnswer = answer;
+    }
+  });
   setHandler(factoryStatusQuery, (): FactoryWorkflowState => ({
     schemaVersion: state.schemaVersion,
     runId: state.runId,
@@ -93,6 +109,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     nodeAttempts: [...state.nodeAttempts],
     currentNode: state.currentNode,
     failedNode: state.failedNode,
+    pendingClarification: state.pendingClarification,
     budget: toBudgetState(state.budget),
     continuationGeneration: state.continuationGeneration,
   }));
@@ -110,7 +127,13 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
   };
 
   const maybeContinueAsNew = async (worktree?: { path: string; branch: string }, agentOutput?: object) => {
-    if (state.nodeAttempts.length < MAX_NODE_ATTEMPTS_BEFORE_CONTINUE_AS_NEW) return;
+    // V2 requires a stage checkpoint before history rollover; never restart it from
+    // the beginning and duplicate completed agent/tool side effects.
+    if (input.protocolVersion === 2) return;
+    if (
+      state.nodeAttempts.length - attemptsAtGenerationStart
+      < MAX_NODE_ATTEMPTS_BEFORE_CONTINUE_AS_NEW
+    ) return;
     await continueAsNew<typeof factoryWorkflow>({
       ...input,
       continuation: {
@@ -119,6 +142,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
         continuationGeneration: state.continuationGeneration + 1,
         worktree,
         agentOutput,
+        baselineRevision,
       },
     });
   };
@@ -138,11 +162,16 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
   };
 
     let activeWorktreePath = continuation?.worktree?.path;
-    let baselineRevision = "HEAD";
+    let baselineRevision = continuation?.baselineRevision ?? "HEAD";
 
     try {
       let worktree = continuation?.worktree;
       let previous: object = continuation?.agentOutput ?? {};
+      const predecessors: AgentOutput[] = continuation?.agentOutput
+        && "predecessors" in continuation.agentOutput
+        && Array.isArray(continuation.agentOutput.predecessors)
+        ? continuation.agentOutput.predecessors.filter(isAgentOutput)
+        : [];
 
       if (!worktree) {
         state.currentNode = "prepare_repository";
@@ -203,33 +232,168 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     checkCancelled();
     await maybeContinueAsNew(worktree, previous);
 
-    const agentRoles = ["scout", "plan", "implement"] as const;
+    const agentRoles = input.protocolVersion === 2
+      ? (["discovery_plan", "implement"] as const)
+      : (["scout", "plan", "implement"] as const);
     for (const role of agentRoles) {
       if (pendingRerun && pendingRerun !== role) continue;
       if (pendingRerun === role) pendingRerun = undefined;
 
       state.currentNode = role;
-      const agentRun = await runNodeWithRetry({
-        runId: input.runId,
-        node: role,
-        budget: state.budget,
-        maxAttempts: 2,
-        execute: async () => {
-          const result = await agentActivity.runAgent({ run: input, worktree: worktree!, role, input: previous });
-          if (!agentSucceeded(result.output)) {
-            const failedOutput = result.output;
-            const error = new Error(`${role} agent ${failedOutput.status}: ${failedOutput.summary}`);
-            error.name = agentFailureName(failedOutput.status as "failed" | "escalate_to_human");
-            throw error;
+      let clarification:
+        | { request: ClarificationRequest; answer: ClarificationAnswer }
+        | undefined;
+      let output: AgentOutput | undefined;
+      for (let clarificationRound = 0; clarificationRound <= 2; clarificationRound += 1) {
+        const agentInput = input.protocolVersion === 2
+          ? {
+            schemaVersion: "node-context.v1",
+            stateRevision: predecessors.length,
+            task: {
+              prompt: input.description ?? input.title ?? input.taskId,
+              ...(input.title ? { title: input.title } : {}),
+              ...(input.description ? { description: input.description } : {}),
+              repository: input.repository,
+              baseBranch: input.baseBranch,
+            },
+            repository: { revision: baselineRevision, worktreePath: worktree!.path },
+            predecessors: [...predecessors],
+            conversationRefs: [],
+            claimRefs: [],
+            ...(clarification ? { clarification } : {}),
           }
-          return result;
-        },
-        tokensUsed: (result) => 0,
-      });
-      state.budget = agentRun.budget;
-      recordAttempts(agentRun.attemptRefs);
-      if (agentRun.failed) return await failRun(role, worktree.path);
-      previous = (agentRun.output as AgentActivityResult).output.data;
+          : previous;
+        const agentRun = await runNodeWithRetry({
+          runId: input.runId,
+          node: role,
+          budget: state.budget,
+          maxAttempts: 2,
+          execute: async (_attemptNumber, attemptId) => {
+            const result = await agentActivity.runAgent({
+              run: { ...input, attemptId },
+              worktree: worktree!,
+              role,
+              input: agentInput,
+            });
+            if (result.output.status === "failed" || (input.protocolVersion !== 2 && !agentSucceeded(result.output))) {
+              const failedOutput = result.output;
+              const error = new Error(`${role} agent ${failedOutput.status}: ${failedOutput.summary}`);
+              error.name = agentFailureName(failedOutput.status as "failed" | "escalate_to_human");
+              throw error;
+            }
+            return result;
+          },
+          tokensUsed: () => 0,
+        });
+        state.budget = agentRun.budget;
+        recordAttempts(agentRun.attemptRefs);
+        if (agentRun.failed) return await failRun(role, worktree.path);
+        output = (agentRun.output as AgentActivityResult).output;
+        if (output.status === "succeeded") break;
+        if (clarificationRound === 2) return await failRun(role, worktree.path);
+
+        const createdAt = new Date().toISOString();
+        const request: ClarificationRequest = {
+          schemaVersion: "clarification-request.v1",
+          requestId: uuid4(),
+          runId: input.runId,
+          threadId: `${input.runId}:${role}`,
+          requestingNode: role,
+          recipient: clarificationRecipient(output, role),
+          question: String(output.data.question ?? output.summary),
+          stateRevision: predecessors.length,
+          repositoryRevision: baselineRevision,
+          contextRefs: [...output.evidenceRefs],
+          createdAt,
+          deadlineAt: new Date(Date.now() + 24 * 60 * 60 * 1_000).toISOString(),
+        };
+        state.pendingClarification = request;
+        predecessors.push(output);
+        await controlActivity.recordFactoryEvent({
+          runId: input.runId,
+          eventId: `clarification-requested:${request.requestId}`,
+          type: "clarification.requested",
+          payload: request,
+        });
+
+        if (request.recipient.type === "node" && request.recipient.id !== role) {
+          const peerRole = request.recipient.id === "implement" ? "implement" : "discovery_plan";
+          const peerRun = await runNodeWithRetry({
+            runId: input.runId,
+            node: peerRole,
+            budget: state.budget,
+            maxAttempts: 1,
+            execute: async (_attemptNumber, attemptId) => {
+              const result = await agentActivity.runAgent({
+                run: { ...input, attemptId },
+                worktree: worktree!,
+                role: peerRole,
+                input: {
+                  schemaVersion: "node-context.v1",
+                  stateRevision: predecessors.length,
+                  task: { prompt: request.question, repository: input.repository },
+                  repository: { revision: baselineRevision, worktreePath: worktree!.path },
+                  predecessors: [...predecessors],
+                  conversationRefs: [],
+                  claimRefs: [],
+                  clarificationRequest: request,
+                },
+              });
+              if (!agentSucceeded(result.output)) throw new Error(`${peerRole} could not answer clarification`);
+              return result;
+            },
+          });
+          state.budget = peerRun.budget;
+          recordAttempts(peerRun.attemptRefs);
+          if (peerRun.failed) return await failRun(peerRole, worktree.path);
+          const peerOutput = (peerRun.output as AgentActivityResult).output;
+          predecessors.push(peerOutput);
+          pendingAnswer = {
+            schemaVersion: "clarification-answer.v1",
+            requestId: request.requestId,
+            answerId: uuid4(),
+            idempotencyKey: `${request.requestId}:${peerOutput.role}:${clarificationRound}`,
+            responder: { type: "node", id: peerOutput.role },
+            body: JSON.stringify({ summary: peerOutput.summary, data: peerOutput.data }),
+            artifactRefs: [...peerOutput.evidenceRefs],
+            stateRevision: request.stateRevision,
+            createdAt: new Date().toISOString(),
+          };
+        } else {
+          state.status = "input_required";
+          await controlActivity.updateTaskStatus({
+            taskId: input.taskId,
+            status: "input_required",
+            runId: input.runId,
+            currentNode: role,
+          });
+          const answered = await condition(() => pendingAnswer !== undefined || cancelled, "24 hours");
+          checkCancelled();
+          if (!answered || !pendingAnswer) return await failRun(role, worktree.path);
+        }
+
+        clarification = { request, answer: pendingAnswer! };
+        await controlActivity.recordFactoryEvent({
+          runId: input.runId,
+          eventId: `clarification-answered:${pendingAnswer!.answerId}`,
+          type: "clarification.answered",
+          payload: pendingAnswer!,
+        });
+        pendingAnswer = undefined;
+        state.pendingClarification = undefined;
+        state.status = "running";
+        await controlActivity.updateTaskStatus({
+          taskId: input.taskId,
+          status: "running",
+          runId: input.runId,
+          currentNode: role,
+        });
+      }
+      if (!output || output.status !== "succeeded") return await failRun(role, worktree.path);
+      if (input.protocolVersion === 2) predecessors.push(output);
+      previous = input.protocolVersion === 2
+        ? { predecessors: [...predecessors] }
+        : output.data;
       checkCancelled();
       await maybeContinueAsNew(worktree, previous);
     }
@@ -240,8 +404,8 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
       budget: state.budget,
       maxRepairAttempts: state.budget.maxRepairAttempts,
       runChecks: () => buildActivity.runChecks({ run: input, worktree: worktree! }),
-      runRepair: async (repairAttempt) => {
-        const repair = await agentActivity.runAgent({ run: input, worktree: worktree!, role: "repair", input: { previous } });
+      runRepair: async (_repairAttempt, attemptId) => {
+        const repair = await agentActivity.runAgent({ run: { ...input, attemptId }, worktree: worktree!, role: "repair", input: { previous } });
         if (!agentSucceeded(repair.output)) {
           const failedOutput = repair.output;
           const error = new Error(`repair agent ${failedOutput.status}: ${failedOutput.summary}`);
@@ -264,7 +428,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
       runId: input.runId,
       budget: state.budget,
       policy: DEFAULT_MAINTAINABILITY_POLICY,
-      assess: async (evidenceCollectionRounds) => {
+      assess: async (evidenceCollectionRounds, attemptId) => {
         const fitnessResult = await buildActivity.runFitnessAssessment({ run: input, worktree: worktree! });
         const fitness: FitnessRunResult = {
           outcome: fitnessResult.outcome,
@@ -287,7 +451,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
         const criticReports: unknown[] = [];
         if (requiredCritics > 0) {
           const critic = await agentActivity.runAgent({
-            run: input,
+            run: { ...input, attemptId },
             worktree: worktree!,
             role: "maintainability_critic",
             input: { evidence: criticEvidence, previous },
@@ -313,9 +477,9 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
         });
       },
       runBehaviorChecks: () => buildActivity.runChecks({ run: input, worktree: worktree! }),
-      runRefactor: async (scope, attempt) => {
+      runRefactor: async (scope, attempt, attemptId) => {
         const repair = await agentActivity.runAgent({
-          run: input,
+          run: { ...input, attemptId },
           worktree: worktree!,
           role: "repair",
           input: { mode: "maintainability_refactor", scope, attempt, previous },
@@ -376,8 +540,8 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
       node: "review",
       budget: state.budget,
       maxAttempts: 2,
-      execute: async () => {
-        const review = await agentActivity.runAgent({ run: input, worktree: worktree!, role: "review", input: previous });
+      execute: async (_attemptNumber, attemptId) => {
+        const review = await agentActivity.runAgent({ run: { ...input, attemptId }, worktree: worktree!, role: "review", input: previous });
         if (!agentSucceeded(review.output)) {
           const failedOutput = review.output;
           const error = new Error(`review gate failed: ${failedOutput.summary}`);
@@ -430,7 +594,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     if (release.status !== "promoted") return await failRun("release_controller", worktree.path);
     checkCancelled();
     await controlActivity.removeWorktree(worktree.path);
-    await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "Done", runId: input.runId });
+    await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "succeeded", runId: input.runId });
     state.status = "succeeded";
     state.currentNode = undefined;
     return buildFinalState(state);
@@ -456,6 +620,7 @@ function buildFinalState(state: {
   nodeAttempts: FactoryWorkflowState["nodeAttempts"];
   currentNode?: FactoryNodeName;
   failedNode?: FactoryNodeName;
+  pendingClarification?: ClarificationRequest;
   continuationGeneration: number;
   budget: typeof DEFAULT_WORKFLOW_BUDGET;
 }): FactoryWorkflowState {
@@ -467,9 +632,32 @@ function buildFinalState(state: {
     nodeAttempts: [...state.nodeAttempts],
     currentNode: state.currentNode,
     failedNode: state.failedNode,
+    pendingClarification: state.pendingClarification,
     budget: toBudgetState(state.budget),
     continuationGeneration: state.continuationGeneration,
   };
+}
+
+function isAgentOutput(value: unknown): value is AgentOutput {
+  return typeof value === "object"
+    && value !== null
+    && (value as AgentOutput).schemaVersion === "agent-output.v1"
+    && typeof (value as AgentOutput).role === "string";
+}
+
+function clarificationRecipient(
+  output: AgentOutput,
+  requestingRole: string,
+): ClarificationRequest["recipient"] {
+  const recipientNode = output.data.recipientNode;
+  if (
+    typeof recipientNode === "string"
+    && recipientNode !== requestingRole
+    && (recipientNode === "discovery_plan" || recipientNode === "implement")
+  ) {
+    return { type: "node", id: recipientNode };
+  }
+  return { type: "requester", id: "origin" };
 }
 
 export { FACTORY_NODE_NAMES };

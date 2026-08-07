@@ -1,4 +1,5 @@
 import { mkdir, readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { execFile as nodeExecFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -10,6 +11,8 @@ import { assertHindsightCompatibility, HindsightMemory } from "../integrations/h
 import { memoryBankFromEnv, memoryTags, resolveProjectBank, validateHindsightTemplate } from "../integrations/hindsight-config.js";
 import { assembleAgentMemory, retainableAgentOutcome } from "../agents/memory.js";
 import { createFactoryProjection } from "../db/factory-projection.js";
+import { createAgentSessionLedger } from "../db/agent-session-ledger.js";
+import { createFilesystemObjectStore } from "../evidence/object-store.js";
 import { PiAgentRunner } from "../agents/pi-agent.js";
 import { CrabboxWorkspaceProvider } from "../workspaces/crabbox-provider.js";
 import { officialCrabboxRuntime } from "../workspaces/crabbox-runtime.js";
@@ -48,11 +51,18 @@ async function prepareRepository(repository: string): Promise<{ repository: stri
   let path = repository;
   if (repository.startsWith("https://")) {
     await mkdir(root, { recursive: true });
-    path = join(root, repository.split("/").pop()?.replace(/\.git$/, "") || "repository");
+    const name = repository.split("/").pop()?.replace(/\.git$/, "") || "repository";
+    const key = createHash("sha256").update(repository).digest("hex").slice(0, 16);
+    path = join(root, `${name}-${key}`);
     try {
+      const { stdout: origin } = await execFile("git", ["-C", path, "remote", "get-url", "origin"], {
+        timeout: 10_000,
+      });
+      if (origin.trim() !== repository) throw new Error("repository cache origin mismatch");
       await execFile("git", ["-C", path, "fetch", "--prune"]);
-    } catch {
-      await execFile("git", ["clone", "--depth", "1", repository, path]);
+    } catch (error) {
+      if (error instanceof Error && error.message === "repository cache origin mismatch") throw error;
+      await execFile("git", ["clone", "--depth", "1", repository, path], { timeout: 120_000 });
     }
   }
   const { stdout } = await execFile("git", ["-C", path, "rev-parse", "HEAD"]);
@@ -61,6 +71,16 @@ async function prepareRepository(repository: string): Promise<{ repository: stri
 
 export async function startWorkers(): Promise<void> {
   await assertCrabboxAvailable();
+  await runMigrations();
+  const pool = createPool();
+  const db = createDatabase(pool);
+  const projection = createFactoryProjection(db);
+  const sessionLedger = createAgentSessionLedger(
+    db,
+    createFilesystemObjectStore(
+      process.env.EVIDENCE_OBJECT_STORE_ROOT ?? "/tmp/software-factory-evidence",
+    ),
+  );
   const root = process.env.WORKTREE_ROOT ?? "/tmp/software-factory-worktrees";
   const workspace = new CrabboxWorkspaceProvider(officialCrabboxRuntime);
   const crabbox = createCrabboxActivityRuntime(workspace);
@@ -77,6 +97,7 @@ export async function startWorkers(): Promise<void> {
   await memory.bootstrapBank(memoryBankFromEnv(), template);
   const agent = createAgentActivities({
     run: pi.run.bind(pi),
+    sessions: sessionLedger,
     memory: {
       async buildContext({ run, role, value, mentalModels, operations }) {
         const input = run as FactoryWorkflowInput;
@@ -109,10 +130,6 @@ export async function startWorkers(): Promise<void> {
     health: new HealthChecker(),
   });
   const health = new HealthChecker();
-  await runMigrations();
-  const pool = createPool();
-  const db = createDatabase(pool);
-  const projection = createFactoryProjection(db);
   const projectionActivities = createProjectionActivities(projection);
   const hiddenScenariosRoot = process.env.FACTORY_HIDDEN_SCENARIOS_ROOT
     ?? join(process.cwd(), "factory/hidden-scenarios");

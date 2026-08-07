@@ -34,8 +34,9 @@ export async function runNodeAttempt<T>(options: {
   execute: () => Promise<T>;
   evidenceRefs?: readonly string[];
   startedAtMs?: number;
+  attemptId?: string;
 }): Promise<RunNodeAttemptResult<T>> {
-  const attemptId = `${options.node}-${options.attemptNumber}-${uuid4()}`;
+  const attemptId = options.attemptId ?? `${options.node}-${options.attemptNumber}-${uuid4()}`;
   const startedAt = options.startedAtMs !== undefined
     ? new Date(options.startedAtMs).toISOString()
     : new Date().toISOString();
@@ -85,7 +86,7 @@ export async function runNodeWithRetry<T>(options: {
   node: FactoryNodeName;
   budget: WorkflowBudget;
   maxAttempts: number;
-  execute: (attemptNumber: number) => Promise<T>;
+  execute: (attemptNumber: number, attemptId: string) => Promise<T>;
   evidenceRefs?: (output: T) => readonly string[];
   tokensUsed?: (output: T) => number;
 }): Promise<RunNodeWithRetryResult<T>> {
@@ -101,12 +102,14 @@ export async function runNodeWithRetry<T>(options: {
 
     const startedAtMs = Date.now();
     budget = consumeAgentAttempt(budget, 0);
+    const attemptId = `${options.node}-${attemptNumber}-${uuid4()}`;
     const attempt = await runNodeAttempt({
       runId: options.runId,
       node: options.node,
       attemptNumber,
       budget,
-      execute: () => options.execute(attemptNumber),
+      execute: () => options.execute(attemptNumber, attemptId),
+      attemptId,
       evidenceRefs: undefined,
       startedAtMs,
     });

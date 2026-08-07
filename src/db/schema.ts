@@ -8,6 +8,7 @@ import {
   real,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const factoryRuns = pgTable("factory_runs", {
@@ -141,6 +142,83 @@ export const toolCalls = pgTable(
     }).onDelete("cascade"),
   ],
 );
+
+export const factoryMessages = pgTable(
+  "factory_messages",
+  {
+    runId: text("run_id")
+      .notNull()
+      .references(() => factoryRuns.runId, { onDelete: "cascade" }),
+    messageId: text("message_id").notNull(),
+    threadId: text("thread_id").notNull(),
+    sequence: integer("sequence").notNull(),
+    kind: text("kind").notNull(),
+    sender: jsonb("sender").notNull(),
+    recipients: jsonb("recipients").notNull(),
+    body: text("body").notNull(),
+    replyTo: text("reply_to"),
+    requestId: text("request_id"),
+    stateRevision: integer("state_revision").notNull(),
+    repositoryRevision: text("repository_revision"),
+    artifactRefs: jsonb("artifact_refs").notNull().default([]),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.runId, table.messageId] }),
+    uniqueIndex("factory_messages_thread_sequence_uidx").on(table.runId, table.threadId, table.sequence),
+  ],
+);
+
+export const factoryClarifications = pgTable(
+  "factory_clarifications",
+  {
+    runId: text("run_id")
+      .notNull()
+      .references(() => factoryRuns.runId, { onDelete: "cascade" }),
+    requestId: text("request_id").notNull(),
+    threadId: text("thread_id").notNull(),
+    requestingNode: text("requesting_node").notNull(),
+    recipient: jsonb("recipient").notNull(),
+    question: text("question").notNull(),
+    stateRevision: integer("state_revision").notNull(),
+    status: text("status").notNull(),
+    answer: jsonb("answer"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    deadlineAt: timestamp("deadline_at", { withTimezone: true }).notNull(),
+    answeredAt: timestamp("answered_at", { withTimezone: true }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.runId, table.requestId] }),
+    index("factory_clarifications_status_idx").on(table.runId, table.status),
+  ],
+);
+
+export const factoryClaimRevisions = pgTable(
+  "factory_claim_revisions",
+  {
+    runId: text("run_id")
+      .notNull()
+      .references(() => factoryRuns.runId, { onDelete: "cascade" }),
+    claimId: text("claim_id").notNull(),
+    revision: integer("revision").notNull(),
+    status: text("status").notNull(),
+    author: jsonb("author").notNull(),
+    valueRef: jsonb("value_ref").notNull(),
+    dependsOn: jsonb("depends_on").notNull().default([]),
+    supersedes: jsonb("supersedes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.runId, table.claimId, table.revision] }),
+  ],
+);
+
+export const a2aTasks = pgTable("a2a_tasks", {
+  taskId: text("task_id").primaryKey(),
+  contextId: text("context_id").notNull(),
+  task: jsonb("task").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const evidenceItems = pgTable(
   "evidence_items",

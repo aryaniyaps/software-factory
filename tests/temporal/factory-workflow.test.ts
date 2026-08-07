@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentOutput } from "../../src/contracts/nodes.js";
 import type { FactoryWorkflowInput } from "../../src/temporal/client.js";
 import {
+  answerClarificationSignal,
   cancelFactorySignal,
   factoryStatusQuery,
   factoryWorkflow,
@@ -49,6 +50,8 @@ type MockOptions = {
   transientScout?: boolean;
   exhaustedBudget?: boolean;
   maintainabilityRepairable?: boolean;
+  internalClarification?: boolean;
+  humanClarification?: boolean;
 };
 
 type AgentInvocation = {
@@ -110,6 +113,7 @@ function createActivities(options: MockOptions = {}) {
   const agentInvocations: AgentInvocation[] = [];
   let scoutAttempts = 0;
   let criticCalls = 0;
+  let implementCalls = 0;
   const checks = [...(options.checks ?? [{ passed: true, output: "ok" }])];
   const release = createReleaseActivities(calls, `registry/app@sha256:${"b".repeat(64)}`);
 
@@ -174,6 +178,21 @@ function createActivities(options: MockOptions = {}) {
       if (role === "review" && options.reviewStatus) {
         return { sessionId: role, output: agentOutput(role, options.reviewStatus) };
       }
+      if (role === "implement" && (options.internalClarification || options.humanClarification)) {
+        implementCalls += 1;
+        if (implementCalls === 1) {
+          return {
+            sessionId: role,
+            output: {
+              ...agentOutput(role, "escalate_to_human"),
+              data: {
+                question: "Which compatibility rule applies?",
+                ...(options.internalClarification ? { recipientNode: "discovery_plan" } : {}),
+              },
+            },
+          };
+        }
+      }
       return { sessionId: role, output: agentOutput(role) };
     },
     runChecks: async () => {
@@ -215,6 +234,9 @@ function createActivities(options: MockOptions = {}) {
     updateTaskStatus: async ({ status }: { status: string }) => {
       calls.push(`status:${status}`);
     },
+    recordFactoryEvent: async ({ type }: { type: string }) => {
+      calls.push(`event:${type}`);
+    },
   };
 
   return { activities, calls, agentInvocations };
@@ -228,6 +250,7 @@ function queueScopedActivities(fullActivities: ReturnType<typeof createActivitie
       removeWorktree: fullActivities.removeWorktree,
       securityScan: fullActivities.securityScan,
       updateTaskStatus: fullActivities.updateTaskStatus,
+      recordFactoryEvent: fullActivities.recordFactoryEvent,
     },
     [TASK_QUEUES.agent]: {
       runAgent: fullActivities.runAgent,
@@ -255,7 +278,12 @@ function queueScopedActivities(fullActivities: ReturnType<typeof createActivitie
 
 async function runFactoryTest(
   options: MockOptions = {},
-  runOptions?: { signal?: "cancel" | "rerun"; continuation?: FactoryWorkflowContinuationInput["continuation"]; queueScoped?: boolean },
+  runOptions?: {
+    signal?: "cancel" | "rerun" | "answer";
+    continuation?: FactoryWorkflowContinuationInput["continuation"];
+    queueScoped?: boolean;
+    protocolVersion?: 2;
+  },
 ) {
   const testEnv = await TestWorkflowEnvironment.createTimeSkipping();
   const { activities, calls, agentInvocations } = createActivities(options);
@@ -273,7 +301,7 @@ async function runFactoryTest(
   try {
     const workflowInput: FactoryWorkflowContinuationInput = runOptions?.continuation
       ? { ...baseInput, continuation: runOptions.continuation }
-      : baseInput;
+      : { ...baseInput, protocolVersion: runOptions?.protocolVersion };
     const handle = await testEnv.client.workflow.start(factoryWorkflow, {
       taskQueue: TASK_QUEUES.control,
       workflowId: `factory-${baseInput.runId}-${Math.random().toString(36).slice(2)}`,
@@ -284,6 +312,23 @@ async function runFactoryTest(
     }
     if (runOptions?.signal === "rerun") {
       await handle.signal(rerunNodeSignal, "scout");
+    }
+    if (runOptions?.signal === "answer") {
+      let status = await handle.query(factoryStatusQuery);
+      while (status.status !== "input_required" || !status.pendingClarification) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        status = await handle.query(factoryStatusQuery);
+      }
+      await handle.signal(answerClarificationSignal, {
+        schemaVersion: "clarification-answer.v1",
+        requestId: status.pendingClarification.requestId,
+        answerId: "answer-1",
+        idempotencyKey: "answer-1",
+        responder: { type: "human", id: "test" },
+        body: "Maintain compatibility.",
+        stateRevision: status.pendingClarification.stateRevision,
+        createdAt: "2026-08-07T12:00:00.000Z",
+      });
     }
     const result = await handle.result();
     return { result, calls, agentInvocations, threw: false as const };
@@ -324,6 +369,65 @@ describe.sequential("factory workflow policy execution", () => {
     expect(result!.nodeAttempts.length).toBeGreaterThan(0);
     expect(result!.completedNodes).toContain("scout");
     expect(result!.budget?.agentAttemptsUsed).toBeGreaterThan(0);
+  }, temporalTimeoutMs);
+
+  it("uses one discovery-plan node and preserves its complete output for implementation in v2", async () => {
+    const { result, agentInvocations, threw } = await runFactoryTest({}, { protocolVersion: 2 });
+    expect(threw).toBe(false);
+    expect(result!.completedNodes).toContain("discovery_plan");
+    expect(agentInvocations.slice(0, 2).map(({ role }) => role)).toEqual([
+      "discovery_plan",
+      "implement",
+    ]);
+    expect(agentInvocations.map(({ role }) => role)).not.toContain("scout");
+    expect(agentInvocations.map(({ role }) => role)).not.toContain("plan");
+    expect(agentInvocations[1]?.input).toMatchObject({
+      schemaVersion: "node-context.v1",
+      predecessors: [{
+        schemaVersion: "agent-output.v1",
+        role: "discovery_plan",
+        summary: "discovery_plan succeeded",
+        evidenceRefs: ["ev-1"],
+        data: { role: "discovery_plan" },
+      }],
+    });
+  }, temporalTimeoutMs);
+
+  it("routes a downstream clarification back to discovery-plan and resumes implementation", async () => {
+    const { agentInvocations, threw } = await runFactoryTest(
+      { internalClarification: true },
+      { protocolVersion: 2 },
+    );
+    expect(threw).toBe(false);
+    expect(agentInvocations.slice(0, 4).map(({ role }) => role)).toEqual([
+      "discovery_plan",
+      "implement",
+      "discovery_plan",
+      "implement",
+    ]);
+    expect(agentInvocations[3]?.input).toMatchObject({
+      clarification: {
+        request: {
+          requestingNode: "implement",
+          recipient: { type: "node", id: "discovery_plan" },
+        },
+        answer: {
+          responder: { type: "node", id: "discovery_plan" },
+        },
+      },
+    });
+  }, temporalTimeoutMs);
+
+  it("waits durably for a requester answer and resumes the same node", async () => {
+    const { calls, agentInvocations, threw } = await runFactoryTest(
+      { humanClarification: true },
+      { protocolVersion: 2, signal: "answer" },
+    );
+    expect(threw).toBe(false);
+    expect(calls).toContain("status:input_required");
+    expect(calls).toContain("event:clarification.requested");
+    expect(calls).toContain("event:clarification.answered");
+    expect(agentInvocations.filter(({ role }) => role === "implement")).toHaveLength(2);
   }, temporalTimeoutMs);
 
   it("does not fall through to build when review gate fails", async () => {
@@ -426,7 +530,7 @@ describe.sequential("factory workflow policy execution", () => {
       "agent:review",
       "build_artifact",
       "preview_deploy",
-      "status:Done",
+      "status:succeeded",
     ];
     let previousIndex = -1;
     for (const marker of stageMarkers) {

@@ -13,6 +13,7 @@ import type {
 } from "../../assurance/maintainability/policy.js";
 import type { NodeAttemptRef } from "./types.js";
 import { runNodeAttempt } from "./run-node.js";
+import { uuid4 } from "@temporalio/workflow";
 
 export interface MaintainabilityLoopResult {
   assessAttempts: NodeAttemptRef[];
@@ -34,9 +35,9 @@ export async function runMaintainabilityLoop(options: {
   runId: string;
   budget: WorkflowBudget;
   policy: MaintainabilityPolicy;
-  assess: (evidenceCollectionRounds: number) => Promise<MaintainabilityAssessmentResult>;
+  assess: (evidenceCollectionRounds: number, attemptId: string) => Promise<MaintainabilityAssessmentResult>;
   runBehaviorChecks: () => Promise<ChecksResult>;
-  runRefactor: (scope: MaintainabilityRepairScope, attempt: number) => Promise<AgentOutput>;
+  runRefactor: (scope: MaintainabilityRepairScope, attempt: number, attemptId: string) => Promise<AgentOutput>;
 }): Promise<MaintainabilityLoopResult> {
   let budget = options.budget;
   const assessAttempts: NodeAttemptRef[] = [];
@@ -49,12 +50,14 @@ export async function runMaintainabilityLoop(options: {
 
   const recordAssessment = async () => {
     const started = Date.now();
+    const attemptId = `maintainability_assess-${assessAttemptNumber}-${uuid4()}`;
     const assessment = await runNodeAttempt({
       runId: options.runId,
       node: "maintainability_assess",
       attemptNumber: assessAttemptNumber,
       budget,
-      execute: () => options.assess(evidenceCollectionRounds),
+      execute: () => options.assess(evidenceCollectionRounds, attemptId),
+      attemptId,
     });
     budget = recordWallClock(assessment.budget, Date.now() - started);
     assessAttempts.push(assessment.attemptRef);
@@ -113,12 +116,14 @@ export async function runMaintainabilityLoop(options: {
       budget = consumeRepairAttempt(budget, 0);
 
       const refactorStarted = Date.now();
+      const attemptId = `repair-${refactorAttempt}-${uuid4()}`;
       const refactor = await runNodeAttempt({
         runId: options.runId,
         node: "repair",
         attemptNumber: refactorAttempt,
         budget,
-        execute: () => options.runRefactor(scope, refactorAttempt),
+        execute: () => options.runRefactor(scope, refactorAttempt, attemptId),
+        attemptId,
       });
       budget = recordWallClock(refactor.budget, Date.now() - refactorStarted);
       refactorAttempts.push(refactor.attemptRef);

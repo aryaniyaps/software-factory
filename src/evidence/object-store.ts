@@ -33,8 +33,8 @@ export function createFilesystemObjectStore(root: string): ObjectStore {
     async put(path, body) {
       const sha256 = sha256Hex(body);
       const filePath = join(root, normalizePath(path));
-      await mkdir(dirname(filePath), { recursive: true });
-      await writeFile(filePath, body);
+      await mkdir(dirname(filePath), { recursive: true, mode: 0o700 });
+      await writeFile(filePath, body, { mode: 0o600 });
       return { sha256, uri: `file://${filePath}` };
     },
     async get(path) {

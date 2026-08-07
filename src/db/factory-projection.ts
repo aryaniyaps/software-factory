@@ -7,6 +7,8 @@ import {
   evidenceItems,
   evidenceManifests,
   factoryArtifacts,
+  factoryClarifications,
+  factoryMessages,
   factoryDeployments,
   factoryEvents,
   factoryEventOutbox,
@@ -137,6 +139,7 @@ export function createFactoryProjection(db: Database): FactoryProjection {
       }).onConflictDoNothing({
         target: [factoryEvents.runId, factoryEvents.eventId],
       });
+      await projectConversationEvent(db, input);
     },
 
     async recordEventOutbox(input) {
@@ -455,4 +458,98 @@ export function createFactoryProjection(db: Database): FactoryProjection {
       });
     },
   };
+}
+
+async function projectConversationEvent(
+  db: Database,
+  input: { runId: string; eventId: string; type: string; payload: unknown },
+): Promise<void> {
+  if (input.type === "clarification.requested") {
+    const request = input.payload as {
+      requestId: string;
+      threadId: string;
+      requestingNode: string;
+      recipient: unknown;
+      question: string;
+      stateRevision: number;
+      repositoryRevision?: string;
+      contextRefs?: string[];
+      createdAt: string;
+      deadlineAt: string;
+    };
+    await db.insert(factoryClarifications).values({
+      runId: input.runId,
+      requestId: request.requestId,
+      threadId: request.threadId,
+      requestingNode: request.requestingNode,
+      recipient: request.recipient,
+      question: request.question,
+      stateRevision: request.stateRevision,
+      status: "open",
+      createdAt: new Date(request.createdAt),
+      deadlineAt: new Date(request.deadlineAt),
+    }).onConflictDoNothing({
+      target: [factoryClarifications.runId, factoryClarifications.requestId],
+    });
+    await db.insert(factoryMessages).values({
+      runId: input.runId,
+      messageId: `question:${request.requestId}`,
+      threadId: request.threadId,
+      sequence: request.stateRevision * 2,
+      kind: "question",
+      sender: { type: "node", id: request.requestingNode },
+      recipients: [request.recipient],
+      body: request.question,
+      requestId: request.requestId,
+      stateRevision: request.stateRevision,
+      repositoryRevision: request.repositoryRevision ?? null,
+      artifactRefs: request.contextRefs ?? [],
+      createdAt: new Date(request.createdAt),
+    }).onConflictDoNothing({
+      target: [factoryMessages.runId, factoryMessages.messageId],
+    });
+    return;
+  }
+
+  if (input.type === "clarification.answered") {
+    const answer = input.payload as {
+      requestId: string;
+      answerId: string;
+      responder: unknown;
+      body: string;
+      stateRevision: number;
+      artifactRefs?: string[];
+      createdAt: string;
+    };
+    const [request] = await db.select().from(factoryClarifications).where(and(
+      eq(factoryClarifications.runId, input.runId),
+      eq(factoryClarifications.requestId, answer.requestId),
+    )).limit(1);
+    if (!request) return;
+    await db.update(factoryClarifications).set({
+      status: "answered",
+      answer,
+      answeredAt: new Date(answer.createdAt),
+    }).where(and(
+      eq(factoryClarifications.runId, input.runId),
+      eq(factoryClarifications.requestId, answer.requestId),
+    ));
+    await db.insert(factoryMessages).values({
+      runId: input.runId,
+      messageId: `answer:${answer.answerId}`,
+      threadId: request.threadId,
+      sequence: request.stateRevision * 2 + 1,
+      kind: "answer",
+      sender: answer.responder,
+      recipients: [{ type: "node", id: request.requestingNode }],
+      body: answer.body,
+      replyTo: `question:${answer.requestId}`,
+      requestId: answer.requestId,
+      stateRevision: answer.stateRevision,
+      artifactRefs: answer.artifactRefs ?? [],
+      createdAt: new Date(answer.createdAt),
+    }).onConflictDoNothing({
+      target: [factoryMessages.runId, factoryMessages.messageId],
+    });
+  }
 }

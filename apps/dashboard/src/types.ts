@@ -3,8 +3,7 @@ export const FACTORY_NODE_NAMES = [
   "prepare_repository",
   "create_worktree",
   "security_scan",
-  "scout",
-  "plan",
+  "discovery_plan",
   "implement",
   "deterministic_checks",
   "repair",
@@ -81,13 +80,25 @@ export interface RunEvent {
 }
 
 export interface CreateTaskInput {
-  repository: string;
-  title: string;
-  description: string;
+  prompt: string;
 }
 
 export interface CreateTaskResponse {
   id: string;
+}
+
+export interface ClarificationRequest {
+  schemaVersion: "clarification-request.v1";
+  requestId: string;
+  runId: string;
+  threadId: string;
+  requestingNode: string;
+  recipient: { type: string; id: string };
+  question: string;
+  stateRevision: number;
+  contextRefs: string[];
+  createdAt: string;
+  deadlineAt: string;
 }
 
 export type NodeAttemptStatus = "idle" | "running" | "succeeded" | "failed" | "cancelled";

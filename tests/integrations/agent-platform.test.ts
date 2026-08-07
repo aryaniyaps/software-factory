@@ -8,7 +8,7 @@ import { memoryTags } from "../../src/integrations/hindsight-config.js";
 describe("agent platform role matrix", () => {
   it("keeps role capabilities distinct while sharing only factory resources", async () => {
     const roles = AgentRoles.map((role) => ({ role, profile: ROLE_PROFILES[role], tools: toolsForRole(role) }));
-    expect(roles).toHaveLength(6);
+    expect(roles).toHaveLength(7);
     const critic = roles.find(({ role }) => role === "maintainability_critic");
     expect(critic?.tools).not.toContain("write");
     expect(critic?.tools).not.toContain("bash");

@@ -1,6 +1,8 @@
 import Router from "@koa/router";
 import type Koa from "koa";
-import { FACTORY_NODE_NAMES, type FactoryNodeName } from "../contracts/nodes.js";
+import { createHash } from "node:crypto";
+import { FACTORY_NODE_NAMES, FACTORY_NODE_NAMES_V2, type FactoryNodeName } from "../contracts/nodes.js";
+import { parseClarificationAnswer } from "../contracts/clarification.js";
 import { verifySignedUrl } from "./signed-urls.js";
 import { parsePageRequest } from "./pagination.js";
 import type { EvidenceService } from "./evidence-service.js";
@@ -118,9 +120,39 @@ export function createEvidenceRouter(input: EvidenceRoutesInput): Router {
     ctx.status = 202;
   });
 
+  router.post("/runs/:runId/clarifications/:requestId/answer", async (ctx) => {
+    const body = (ctx.request.body ?? {}) as {
+      answer?: string;
+      stateRevision?: number;
+      idempotencyKey?: string;
+    };
+    if (!body.answer?.trim() || !Number.isInteger(body.stateRevision)) {
+      ctx.status = 422;
+      ctx.body = { schemaVersion: "error.v1", error: "answer and stateRevision are required" };
+      return;
+    }
+    const idempotencyKey = body.idempotencyKey?.trim() || createHash("sha256")
+      .update(`${ctx.params.runId}\0${ctx.params.requestId}\0${body.stateRevision}\0${body.answer.trim()}`)
+      .digest("hex");
+    const answerId = idempotencyKey;
+    const answer = parseClarificationAnswer({
+      schemaVersion: "clarification-answer.v1",
+      requestId: ctx.params.requestId,
+      answerId,
+      idempotencyKey,
+      responder: { type: "human", id: "dashboard" },
+      body: body.answer.trim(),
+      stateRevision: body.stateRevision,
+      createdAt: new Date().toISOString(),
+    });
+    ctx.body = await input.operationsService.answerClarification(ctx.params.runId, answer);
+    ctx.status = 202;
+  });
+
   router.post("/runs/:runId/rerun", async (ctx) => {
     const body = (ctx.request.body ?? {}) as { node?: string };
-    if (!body.node || !FACTORY_NODE_NAMES.includes(body.node as FactoryNodeName)) {
+    const rerunnableNodes = new Set<string>([...FACTORY_NODE_NAMES, ...FACTORY_NODE_NAMES_V2]);
+    if (!body.node || !rerunnableNodes.has(body.node)) {
       ctx.status = 422;
       ctx.body = { schemaVersion: "error.v1", error: "node is required and must be a factory node name" };
       return;

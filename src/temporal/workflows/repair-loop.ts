@@ -8,6 +8,7 @@ import {
 } from "../../policy/retry-policy.js";
 import type { NodeAttemptRef } from "./types.js";
 import { runNodeAttempt } from "./run-node.js";
+import { uuid4 } from "@temporalio/workflow";
 
 export interface RepairLoopResult {
   checksAttempts: NodeAttemptRef[];
@@ -22,7 +23,7 @@ export async function runRepairLoop(options: {
   budget: WorkflowBudget;
   maxRepairAttempts: number;
   runChecks: () => Promise<ChecksResult>;
-  runRepair: (repairAttempt: number) => Promise<AgentOutput>;
+  runRepair: (repairAttempt: number, attemptId: string) => Promise<AgentOutput>;
 }): Promise<RepairLoopResult> {
   let budget = options.budget;
   const checksAttempts: NodeAttemptRef[] = [];
@@ -53,12 +54,14 @@ export async function runRepairLoop(options: {
 
     budget = consumeRepairAttempt(budget, 0);
     const repairStarted = Date.now();
+    const attemptId = `repair-${repairAttempt}-${uuid4()}`;
     const repair = await runNodeAttempt({
       runId: options.runId,
       node: "repair",
       attemptNumber: repairAttempt,
       budget,
-      execute: () => options.runRepair(repairAttempt),
+      execute: () => options.runRepair(repairAttempt, attemptId),
+      attemptId,
       evidenceRefs: undefined,
     });
     budget = recordWallClock(repair.budget, Date.now() - repairStarted);

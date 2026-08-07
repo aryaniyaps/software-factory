@@ -10,6 +10,7 @@ import { mountEvidenceRoutes } from "./evidence-routes.js";
 import type { EvidenceService } from "./evidence-service.js";
 import type { OperationsService } from "./operations-service.js";
 import type { SignedUrlConfig } from "./signed-urls.js";
+import { normalizeTaskIntake, type TaskIntakeInput } from "../tasks/intake-normalizer.js";
 
 export interface ApiStore {
   createTask(input: { repository: string; title: string; description: string }): Promise<string>;
@@ -27,8 +28,6 @@ export interface ApiAppOptions {
   apiToken?: string;
 }
 
-type TaskInput = Partial<{ repository: string; title: string; description: string }>;
-
 export function createApiApp(options: ApiAppOptions): Koa {
   const app = new Koa();
   const router = new Router();
@@ -45,13 +44,19 @@ export function createApiApp(options: ApiAppOptions): Koa {
   app.use(bodyParser());
 
   router.post("/tasks", async (ctx) => {
-    const input = (ctx.request.body ?? {}) as TaskInput;
-    if (!input.repository || !input.title || !input.description) {
+    const input = (ctx.request.body ?? {}) as TaskIntakeInput;
+    let normalized;
+    try {
+      normalized = normalizeTaskIntake(input);
+    } catch (error) {
       ctx.status = 422;
-      ctx.body = { schemaVersion: "error.v1", error: "repository, title, and description are required" };
+      ctx.body = {
+        schemaVersion: "error.v1",
+        error: error instanceof Error ? error.message : String(error),
+      };
       return;
     }
-    const id = await options.store.createTask(input as { repository: string; title: string; description: string });
+    const id = await options.store.createTask(normalized);
     ctx.status = 201;
     ctx.body = { id };
   });

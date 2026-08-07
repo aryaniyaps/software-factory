@@ -2,15 +2,34 @@ import { compactError } from "../../agents/compact-error.js";
 import { buildContextPacket } from "../../agents/context-packet.js";
 import { promptForRole } from "../../agents/prompts.js";
 import type { AgentRunner } from "../../agents/runner.js";
+import type { AgentToolCallRecord } from "../../agents/runner.js";
 import { profileForRole } from "../../agents/role-profiles.js";
 import { toolsForRole } from "../../agents/tool-policy.js";
 import { correlationToAgentMetadata } from "../../integrations/correlation.js";
 import type { FactoryActivities } from "./types.js";
 import { parseAgentOutput, type AgentOutput } from "../../contracts/nodes.js";
+import { parseNodeContext } from "../../contracts/conversation.js";
 
 export interface AgentMemoryHooks {
   buildContext(input: { run: unknown; role: string; value: unknown; mentalModels: readonly string[]; operations: readonly ("recall" | "reflect" | "retain")[] }): Promise<string>;
   retainOutcome(input: { run: unknown; role: string; output: string; operations: readonly ("recall" | "reflect" | "retain")[] }): Promise<void>;
+}
+
+export interface AgentSessionHooks {
+  recordTurn(input: {
+    runId: string;
+    sessionId: string;
+    role: string;
+    nodeAttemptId: string;
+    turnId: string;
+    turnIndex: number;
+    prompt: string;
+    systemPrompt: string;
+    output: string;
+    startedAt: string;
+    completedAt: string;
+    toolCalls: readonly AgentToolCallRecord[];
+  }): Promise<void>;
 }
 
 function predecessorOutputs(value: unknown): AgentOutput[] | undefined {
@@ -51,9 +70,20 @@ function compactedErrorsFromInput(value: unknown): ReturnType<typeof compactErro
   return errors.length ? errors : undefined;
 }
 
-export function createAgentActivities(dependencies: { run: AgentRunner["run"]; memory?: AgentMemoryHooks }): Pick<FactoryActivities, "runAgent"> {
+export function createAgentActivities(dependencies: {
+  run: AgentRunner["run"];
+  memory?: AgentMemoryHooks;
+  sessions?: AgentSessionHooks;
+}): Pick<FactoryActivities, "runAgent"> {
   return {
     async runAgent(input) {
+      if (
+        input.input
+        && typeof input.input === "object"
+        && (input.input as { schemaVersion?: unknown }).schemaVersion === "node-context.v1"
+      ) {
+        parseNodeContext(input.input);
+      }
       const profile = profileForRole(input.role);
       const mode = typeof input.input === "object" && input.input && "mode" in input.input
         ? String((input.input as { mode?: string }).mode)
@@ -90,14 +120,34 @@ export function createAgentActivities(dependencies: { run: AgentRunner["run"]; m
         evidenceRefs: evidenceRefsFromInput(input.input),
         errors: compactedErrorsFromInput(input.input),
       })}\n\n<correlation>${JSON.stringify(metadata)}</correlation>`;
+      const systemPrompt = promptForRole(input.role, mode, input.worktree.path);
+      const startedAt = new Date().toISOString();
       const result = await dependencies.run({
         role: input.role,
         prompt,
-        systemPrompt: promptForRole(input.role, mode, input.worktree.path),
+        systemPrompt,
         cwd: input.worktree.path,
         tools: toolsForRole(input.role),
         metadata,
       });
+      const completedAt = new Date().toISOString();
+      if (dependencies.sessions) {
+        const nodeAttemptId = input.run.attemptId ?? `${input.role}:1`;
+        await dependencies.sessions.recordTurn({
+          runId: input.run.runId,
+          sessionId: result.sessionId,
+          role: input.role,
+          nodeAttemptId,
+          turnId: "turn-0",
+          turnIndex: 0,
+          prompt,
+          systemPrompt,
+          output: result.text,
+          startedAt,
+          completedAt,
+          toolCalls: result.toolCalls ?? [],
+        });
+      }
       if (dependencies.memory && profile.hindsightOperations.includes("retain")) {
         await dependencies.memory.retainOutcome({
           run: input.run,

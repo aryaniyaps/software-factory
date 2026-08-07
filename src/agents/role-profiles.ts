@@ -32,7 +32,8 @@ export function roleLoaderOptionsForWorktree(input: { role: string; cwd: string;
   if (bootstrappedRoot) {
     return harnessLoaderOptions(input.role, bootstrappedRoot);
   }
-  return { agentDir: roleAgentDir(input.cwd, input.role, "repo"), additionalSkillPaths: [] };
+  const trustedRoot = process.env.FACTORY_REPO_ROOT ?? process.cwd();
+  return { agentDir: roleAgentDir(trustedRoot, input.role, "repo"), additionalSkillPaths: [] };
 }
 
 export function allRoleSkillPaths(): string[] {

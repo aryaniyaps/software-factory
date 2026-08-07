@@ -170,6 +170,10 @@
   background: color-mix(in srgb, var(--sf-running) 20%, transparent);
   color: var(--sf-running);
 }
+.status-input_required {
+  background: color-mix(in srgb, var(--sf-warning) 20%, transparent);
+  color: var(--sf-warning);
+}
 .status-succeeded {
   background: color-mix(in srgb, var(--sf-success) 20%, transparent);
   color: var(--sf-success);
@@ -300,7 +304,7 @@
 }
 
 .create-form textarea {
-  min-height: 64px;
+  min-height: 132px;
   resize: vertical;
 }
 
@@ -326,6 +330,44 @@
   border-top: 1px solid var(--sf-border);
   background: var(--sf-surface);
   font-size: 12px;
+}
+
+.clarification-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(280px, 1fr);
+  gap: 16px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--sf-warning);
+  background: color-mix(in srgb, var(--sf-warning) 6%, var(--sf-surface));
+}
+
+.clarification-panel h2 {
+  margin: 8px 0 4px;
+  font-size: 13px;
+}
+
+.clarification-panel p {
+  margin: 0;
+  color: var(--sf-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.clarification-panel form {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.clarification-panel textarea {
+  flex: 1;
+  min-height: 64px;
+  padding: 8px;
+  border: 1px solid var(--sf-border);
+  border-radius: var(--sf-radius);
+  background: var(--sf-bg);
+  color: var(--sf-text);
+  resize: vertical;
 }
 
 .outcome-strip.is-empty {

@@ -1,4 +1,5 @@
 export {
+  answerClarificationSignal,
   cancelFactorySignal,
   factoryStatusQuery,
   factoryWorkflow,

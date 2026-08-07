@@ -18,6 +18,7 @@ export interface WorkflowContinuation {
   continuationGeneration: number;
   worktree?: { path: string; branch: string };
   agentOutput?: object;
+  baselineRevision?: string;
 }
 
 export interface FactoryWorkflowContinuationInput extends FactoryWorkflowInput {
@@ -27,11 +28,13 @@ export interface FactoryWorkflowContinuationInput extends FactoryWorkflowInput {
 export const MAX_NODE_ATTEMPTS_BEFORE_CONTINUE_AS_NEW = 40;
 
 export function succeededNodes(nodeAttempts: readonly NodeAttemptRef[]): FactoryNodeName[] {
-  const succeeded = new Set<FactoryNodeName>();
+  const succeeded: FactoryNodeName[] = [];
   for (const attempt of nodeAttempts) {
-    if (attempt.status === "succeeded") succeeded.add(attempt.node);
+    if (attempt.status === "succeeded" && !succeeded.includes(attempt.node)) {
+      succeeded.push(attempt.node);
+    }
   }
-  return FACTORY_NODE_NAMES.filter((node) => succeeded.has(node));
+  return succeeded;
 }
 
 export function toBudgetState(budget: WorkflowBudget): WorkflowBudgetState {
