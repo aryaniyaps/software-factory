@@ -13,6 +13,7 @@ describe("RoleHarnessSpec", () => {
     for (const role of AgentRoles) {
       expect(ROLE_HARNESS_SPECS[role]).toBeDefined();
       expect(harnessForRole(role).role).toBe(role);
+      expect(harnessForRole(role).modelId).toMatch(/^factory\//);
     }
   });
 

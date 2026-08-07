@@ -2,6 +2,7 @@ import { ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentRunner } from "./runner.js";
 import { join } from "node:path";
 import { createGondolinSession } from "./gondolin-session.js";
+import { resolveModelId } from "./model-resolver.js";
 import { harnessForRole } from "./role-harness.js";
 import { mcpToolsForRole, toolsForRole } from "./tool-policy.js";
 import { parseCriticReport } from "../assurance/maintainability/findings.js";
@@ -25,7 +26,8 @@ export class PiAgentRunner implements AgentRunner {
     const gateway = loadGatewayPolicyFromAllowlist(allowedTools);
     const factoryRoot = process.env.FACTORY_REPO_ROOT ?? process.cwd();
     const modelRuntime = await ModelRuntime.create({ modelsPath: process.env.PI_MODELS_PATH ?? join(factoryRoot, "infra/pi/models.json") });
-    const model = modelRuntime.getModel("litellm", "factory/default");
+    const modelId = resolveModelId(input.role);
+    const model = modelRuntime.getModel("litellm", modelId);
     const mcpToolSet = new Set(mcpToolsForRole(input.role));
     const customTools = [
       ...createContext7McpTools().filter((tool) => gateway.isAllowed(tool.name) && mcpToolSet.has(tool.name)),
@@ -51,6 +53,7 @@ export class PiAgentRunner implements AgentRunner {
     });
     await withSpan("factory.agent.turn", {
       "factory.agent.role": input.role,
+      "factory.agent.model": modelId,
       ...Object.fromEntries(Object.entries(input.metadata).map(([key, value]) => [`factory.${key}`, value])),
     }, async () => {
       await session.prompt(input.prompt);

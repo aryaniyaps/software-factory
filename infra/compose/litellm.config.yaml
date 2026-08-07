@@ -3,6 +3,30 @@ model_list:
     litellm_params:
       model: os.environ/FACTORY_MODEL
       api_key: os.environ/FACTORY_MODEL_API_KEY
+  - model_name: factory/scout
+    litellm_params:
+      model: os.environ/FACTORY_MODEL_SCOUT
+      api_key: os.environ/FACTORY_MODEL_SCOUT_API_KEY
+  - model_name: factory/plan
+    litellm_params:
+      model: os.environ/FACTORY_MODEL_PLAN
+      api_key: os.environ/FACTORY_MODEL_PLAN_API_KEY
+  - model_name: factory/implement
+    litellm_params:
+      model: os.environ/FACTORY_MODEL_IMPLEMENT
+      api_key: os.environ/FACTORY_MODEL_IMPLEMENT_API_KEY
+  - model_name: factory/repair
+    litellm_params:
+      model: os.environ/FACTORY_MODEL_REPAIR
+      api_key: os.environ/FACTORY_MODEL_REPAIR_API_KEY
+  - model_name: factory/review
+    litellm_params:
+      model: os.environ/FACTORY_MODEL_REVIEW
+      api_key: os.environ/FACTORY_MODEL_REVIEW_API_KEY
+  - model_name: factory/critic
+    litellm_params:
+      model: os.environ/FACTORY_MODEL_CRITIC
+      api_key: os.environ/FACTORY_MODEL_CRITIC_API_KEY
 
 litellm_settings:
   callbacks: ["arize_phoenix"]

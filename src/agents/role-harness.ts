@@ -10,6 +10,7 @@ export type TerminalStatus = "succeeded" | "failed" | "abstained" | "escalate_to
 
 export interface RoleHarnessSpec {
   readonly role: AgentRole;
+  readonly modelId: string;
   readonly mission: string;
   readonly skills: readonly string[];
   readonly mentalModels: readonly string[];
@@ -53,6 +54,7 @@ const STANDARD_TERMINALS: TerminalStatus[] = ["succeeded", "failed", "abstained"
 export const ROLE_HARNESS_SPECS: Record<AgentRole, RoleHarnessSpec> = {
   scout: {
     role: "scout",
+    modelId: "factory/scout",
     mission: "Map repository reality for this ticket without writing code or inventing requirements.",
     skills: [
       "src/agents/skills/engineering/research/SKILL.md",
@@ -72,6 +74,7 @@ export const ROLE_HARNESS_SPECS: Record<AgentRole, RoleHarnessSpec> = {
   },
   plan: {
     role: "plan",
+    modelId: "factory/plan",
     mission: "Produce an actionable plan and acceptance checks from scout output and the task.",
     skills: [
       "src/agents/skills/engineering/codebase-design/SKILL.md",
@@ -92,6 +95,7 @@ export const ROLE_HARNESS_SPECS: Record<AgentRole, RoleHarnessSpec> = {
   },
   implement: {
     role: "implement",
+    modelId: "factory/implement",
     mission: "Apply the approved plan in the worktree using TDD without redesigning product scope.",
     skills: [
       "src/agents/skills/engineering/implement/SKILL.md",
@@ -111,6 +115,7 @@ export const ROLE_HARNESS_SPECS: Record<AgentRole, RoleHarnessSpec> = {
   },
   repair: {
     role: "repair",
+    modelId: "factory/repair",
     mission: "Fix failing checks or scoped maintainability debt without broad refactors outside failure scope.",
     skills: [
       "src/agents/skills/engineering/diagnosing-bugs/SKILL.md",
@@ -131,6 +136,7 @@ export const ROLE_HARNESS_SPECS: Record<AgentRole, RoleHarnessSpec> = {
   },
   review: {
     role: "review",
+    modelId: "factory/review",
     mission: "Gate on correctness, security, regressions, and maintainability without fixing code.",
     skills: [
       "src/agents/skills/engineering/code-review/SKILL.md",
@@ -150,6 +156,7 @@ export const ROLE_HARNESS_SPECS: Record<AgentRole, RoleHarnessSpec> = {
   },
   maintainability_critic: {
     role: "maintainability_critic",
+    modelId: "factory/critic",
     mission: "Emit a fitness/critic report from immutable evidence without trusting implementer narrative.",
     skills: [
       "src/agents/skills/engineering/code-review/SKILL.md",

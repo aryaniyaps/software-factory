@@ -1,35 +1,251 @@
 # Software Factory
 
-A production-only, graph-oriented software factory. Temporal is the workflow authority; PostgreSQL stores projections; Crabbox isolates repository, agent, test, and build execution.
+A production-only, graph-oriented software factory. Temporal orchestrates workflow state; PostgreSQL stores projections and evidence; Crabbox isolates repository, agent, test, and build execution. There is no host-process or in-memory fallback for production paths.
 
-## Run
+## Factory assembly line
 
-Start local dependencies (PostgreSQL, Temporal, LiteLLM, Hindsight):
+Each run walks a fixed node graph. Agent nodes use Pi sessions inside Gondolin with role-specific tools, skills, and (optionally) per-role models. `maintainability_critic` is an agent role nested inside `maintainability_assess`, not a separate node.
 
-```bash
-npm run compose:up
+```mermaid
+flowchart LR
+  prep[prepare_repository] --> wt[create_worktree] --> sec[security_scan]
+  sec --> scout --> plan --> impl[implement]
+  impl --> checks[deterministic_checks] --> maint[maintainability_assess]
+  checks -.->|repair loop| checks
+  maint -.->|refactor loop| maint
+  maint --> bev[behavioral_verify] --> review --> build[build_artifact] --> release[release_controller]
+  release -->|promoted| ok([succeeded])
+  release -->|else| stop([abstain / rollback / fail])
 ```
 
-Optional profiles:
+### Nodes
+
+| Node | Kind | Queue | What it does | Model alias | Typical fail / abstain |
+|------|------|-------|--------------|-------------|------------------------|
+| `prepare_repository` | deterministic | control | Clone or refresh the target repository into the cache | — | clone/fetch failure |
+| `create_worktree` | deterministic | control | Create an isolated git worktree for this run | — | worktree failure |
+| `security_scan` | deterministic | control | Scan the worktree for policy/security violations | — | reject or budget exhausted → abstain |
+| `scout` | agent | agent | Map repository reality without writing code | `factory/scout` | abstain / escalate / fail |
+| `plan` | agent | agent | Produce an actionable plan and acceptance checks | `factory/plan` | abstain / escalate / fail |
+| `implement` | agent | agent | Apply the plan in the worktree using TDD | `factory/implement` | fail / abstain |
+| `deterministic_checks` | deterministic | build | Run lint, typecheck, unit tests, and other gates | — | fail → repair loop |
+| `repair` | agent | agent | Fix failing checks or scoped maintainability debt | `factory/repair` | fail after repair budget |
+| `maintainability_assess` | hybrid | build + agent | Fitness scoring + `maintainability_critic` agent + policy gate | `factory/critic` (nested) | policy block → abstain; repairable → refactor loop |
+| `behavioral_verify` | deterministic | verifier | Run behavioral scenarios against the worktree | — | abstain / fail |
+| `review` | agent | agent | Gate on correctness, security, and regressions | `factory/review` | abstain / fail |
+| `build_artifact` | deterministic | build | Build an immutable, digest-pinned container image | — | build failure |
+| `release_controller` | deploy | deploy | Preview deploy, canary (10%→50%→100%), observe, promote or rollback | — | abstain / rollback / fail |
+
+Model aliases are used only when the matching `FACTORY_MODEL_<ROLE>` env var is set; otherwise every agent role uses `factory/default`. See [Configure models](#configure-models).
+
+### Edges and assembly lines
+
+| From | To | Gate | Condition / bound |
+|------|----|------|-------------------|
+| `prepare_repository` | `create_worktree` | ok | skipped when `continuation.worktree` is set |
+| `create_worktree` | `security_scan` | ok | same skip as above |
+| `security_scan` | `scout` | pass | `security.passed`; max 2 attempts |
+| `scout` | `plan` | ok | agent `succeeded`; max 2 attempts |
+| `plan` | `implement` | ok | agent `succeeded`; max 2 attempts |
+| `implement` | `deterministic_checks` | ok | agent `succeeded` |
+| `deterministic_checks` | `maintainability_assess` | pass | all checks passed |
+| `deterministic_checks` | `repair` | fail | while `repairAttempts ≤ 2` |
+| `repair` | `deterministic_checks` | fixed | check-repair mode; repair fail → run fail |
+| `maintainability_assess` | `behavioral_verify` | pass | fitness + critic + policy pass |
+| `maintainability_assess` | `repair` | repairable | maintainability_refactor mode; max 2 refactor attempts |
+| `repair` | `deterministic_checks` | ok | behavior gate after refactor |
+| `deterministic_checks` | `maintainability_assess` | pass | recheck after refactor |
+| `behavioral_verify` | `review` | pass | scenarios passed |
+| `review` | `build_artifact` | ok | agent `succeeded`; max 2 attempts |
+| `build_artifact` | `release_controller` | ok | image built |
+| `release_controller` | *(terminal)* | promoted | canary stages 10% → 50% → 100% |
+| `release_controller` | *(terminal)* | else | `abstained`, `rolled_back`, or `failed` |
+| any | *(terminal)* | cancel | `cancelFactory` signal → `cancelled` |
+
+**Terminals:** `succeeded`, `failed`, `abstained`, `rolled_back`, `cancelled`.
+
+## Prerequisites
+
+| Requirement | Notes |
+|-------------|-------|
+| Node.js `>=24` | See `engines` in `package.json` |
+| Docker + Docker Compose | Local stack and Crabbox container runtime |
+| [Crabbox](https://github.com/nicobailon/crabbox) CLI | Worker fails closed without `crabbox --version` on PATH |
+| `pi` CLI | Required for `npm run bootstrap:pi-resources` |
+| LLM provider key(s) | Routed through LiteLLM (`FACTORY_MODEL` at minimum) |
+| SSH access to deploy host | For digest-pinned staging deploy (`FACTORY_DEPLOY_HOST`) |
+| Optional | Context7 API key, web-search provider keys, Phoenix (`compose:obs`) |
+
+## Quick start
 
 ```bash
-npm run compose:obs     # Phoenix UI on http://localhost:6006
-npm run compose:worker  # run the Temporal worker inside Docker
+# 1. Install Crabbox and verify it works
+crabbox --version
+
+# 2. Start local dependencies (Postgres, Temporal, LiteLLM, Hindsight)
+npm run compose:up
+
+# 3. Configure environment
+cp .env.example .env
+# Edit .env — see Environment reference below
+
+# 4. Install, migrate, build
+npm install
+npm run db:migrate
+npm run build
+
+# 5. Bootstrap Pi role resources (needs writable PI_RESOURCE_ROOT)
+# Default is /opt/software-factory/pi-resources — override in .env if needed:
+#   PI_RESOURCE_ROOT=$HOME/software-factory-pi-resources
+npm run bootstrap:pi-resources
+
+# 6. Start API and worker (two terminals)
+npm run dev       # API on FACTORY_PORT (default 8787)
+npm run worker    # requires FACTORY_WORKER_MODULE=dist/temporal/production-worker.js
+```
+
+The API and worker run `npm run db:migrate` automatically on startup.
+
+### Required env vars for a real run
+
+| Variable | Purpose |
+|----------|---------|
+| `DATABASE_URL` | Factory projection database |
+| `TEMPORAL_ADDRESS` | Temporal gRPC (`localhost:7233`) |
+| `FACTORY_MODEL` + `FACTORY_MODEL_API_KEY` | Default LLM via LiteLLM |
+| `LITELLM_API_KEY` | Pi → LiteLLM auth (can be any non-empty string locally) |
+| `FACTORY_ORGANIZATION` + `FACTORY_PROJECT` | Hindsight memory bank scope |
+| `FACTORY_IMAGE` | Container image name for build activities |
+| `FACTORY_DEPLOY_HOST` + `FACTORY_HEALTH_URL` | Staging deploy target and health check |
+| `FACTORY_WORKER_MODULE` | `dist/temporal/production-worker.js` |
+| `PI_RESOURCE_ROOT` | Writable path for bootstrapped Pi resources |
+
+## Configure models
+
+By default every agent role uses one model: set `FACTORY_MODEL` and `FACTORY_MODEL_API_KEY`, and Pi sessions call the `factory/default` LiteLLM alias.
+
+To use different models per role, set the role-specific env var. When set, that role switches to its harness alias:
+
+| Role | Env var | LiteLLM alias | Aptness |
+|------|---------|---------------|---------|
+| scout | `FACTORY_MODEL_SCOUT` | `factory/scout` | Faster / cheaper exploration |
+| plan | `FACTORY_MODEL_PLAN` | `factory/plan` | Strong reasoning |
+| implement | `FACTORY_MODEL_IMPLEMENT` | `factory/implement` | Strong coding |
+| repair | `FACTORY_MODEL_REPAIR` | `factory/repair` | Strong debugging |
+| review | `FACTORY_MODEL_REVIEW` | `factory/review` | Strong judgment / security |
+| maintainability_critic | `FACTORY_MODEL_CRITIC` | `factory/critic` | Strong analysis, read-only |
+
+Each role also has a matching `FACTORY_MODEL_<ROLE>_API_KEY`. Aliases are defined in [`infra/compose/litellm.config.yaml`](infra/compose/litellm.config.yaml) and registered in [`infra/pi/models.json`](infra/pi/models.json). Restart Compose after changing model env vars:
+
+```bash
+npm run compose:down && npm run compose:up
+```
+
+Model selection is resolved in [`src/agents/model-resolver.ts`](src/agents/model-resolver.ts) from [`src/agents/role-harness.ts`](src/agents/role-harness.ts).
+
+## Start a run
+
+```bash
+curl -sS -X POST http://127.0.0.1:8787/tasks \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "repository": "https://github.com/org/repo.git",
+    "title": "Add feature X",
+    "description": "Concrete acceptance criteria and scope for the change."
+  }'
+# → { "id": "<runUuid>" }
+```
+
+If `FACTORY_API_TOKEN` is set, include `Authorization: Bearer <token>` on write routes.
+
+## Observe and control
+
+| Action | How |
+|--------|-----|
+| Temporal UI | http://localhost:8080 |
+| Run status | `GET /runs/:id` |
+| Run events | `GET /runs/:id/events` |
+| Cancel | `POST /runs/:id/cancel` |
+| Evidence graph | `GET /factory/runs/:runId/graph` |
+| Gates / scenarios / probes | `GET /factory/runs/:runId/gates` etc. |
+| Rerun node | `POST /factory/runs/:runId/rerun` with `{ "node": "implement" }` |
+| Rollback release | `POST /factory/runs/:runId/rollback` |
+| Traces (optional) | `npm run compose:obs` → Phoenix at http://localhost:6006 |
+
+Compose profiles:
+
+```bash
+npm run compose:obs      # Phoenix observability
+npm run compose:worker   # run the Temporal worker inside Docker
 npm run compose:down
 ```
 
-Then run the API and worker on the host:
+## Environment reference
 
-```bash
-npm install
-cp .env.example .env
-npm run db:migrate   # apply Drizzle baseline before API/worker startup
-npm run build
-npm run dev       # API
-npm run worker    # Temporal workers, with FACTORY_WORKER_MODULE=dist/temporal/production-worker.js
-```
+### Database and workflow
 
-The API and worker run `npm run db:migrate` automatically on startup. After a destructive schema cutover, reset only the factory projection database (not Temporal's separate Postgres) and re-apply migrations:
+| Variable | Default | Required |
+|----------|---------|----------|
+| `DATABASE_URL` | `postgres://factory:factory@localhost:5432/factory` | yes |
+| `TEST_DATABASE_URL` | `localhost:5433` | tests only |
+| `TEMPORAL_ADDRESS` | `localhost:7233` | yes |
+| `TEMPORAL_NAMESPACE` | `default` | yes |
+| `FACTORY_PORT` | `8787` | no |
+| `FACTORY_API_TOKEN` | — | no (enables Bearer auth on writes) |
+| `FACTORY_WORKER_MODULE` | — | yes for worker |
+
+### LLM routing
+
+| Variable | Required |
+|----------|----------|
+| `LITELLM_BASE_URL` | yes |
+| `LITELLM_API_KEY` | yes |
+| `FACTORY_MODEL` / `FACTORY_MODEL_API_KEY` | yes (quick start) |
+| `FACTORY_MODEL_<ROLE>` / `FACTORY_MODEL_<ROLE>_API_KEY` | no (per-role override) |
+| `PI_MODELS_PATH` | no (`infra/pi/models.json`) |
+
+### Agents and sandbox
+
+| Variable | Required |
+|----------|----------|
+| `PI_RESOURCE_ROOT` | yes (writable; bootstrap target) |
+| `CRABBOX_BIN` | no (`crabbox`) |
+| `CRABBOX_SLUG_PREFIX` | no |
+| `GONDOLIN_EXTENSION_PATH` | no |
+| `WORKTREE_ROOT` | no |
+| `REPOSITORY_CACHE_ROOT` | no |
+| `FACTORY_ORGANIZATION` / `FACTORY_PROJECT` | yes |
+| `PI_WEB_SEARCH_PROVIDERS` | no |
+| `CONTEXT7_MCP_URL` / `CONTEXT7_API_KEY` | no |
+| `WEB_SEARCH_URL` / `WEB_SEARCH_API_KEY` | no |
+
+### Build and deploy
+
+| Variable | Required |
+|----------|----------|
+| `FACTORY_IMAGE` | yes |
+| `FACTORY_DEPLOY_HOST` | yes |
+| `FACTORY_HEALTH_URL` | yes |
+| `FACTORY_DEPLOYMENT_PROFILE` | no (`staging`) |
+| `FACTORY_PROVENANCE_SIGNING_KEY` | no |
+| `FACTORY_ARTIFACT_DIGEST` / `FACTORY_PREVIOUS_DIGEST` | no |
+
+### Evidence and observability
+
+| Variable | Default |
+|----------|---------|
+| `EVIDENCE_OBJECT_STORE_ROOT` | `/tmp/software-factory-evidence` |
+| `EVIDENCE_MAX_INLINE_BYTES` | `0` |
+| `HINDSIGHT_BASE_URL` | `http://localhost:8888` |
+| `HINDSIGHT_API_KEY` | — |
+| `HINDSIGHT_TEMPLATE_PATH` | `infra/hindsight/factory-bank-template.json` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://127.0.0.1:6006` (with `compose:obs`) |
+
+## Database, schema, and tests
+
+Schema changes: edit `src/db/schema.ts` → `npm run db:generate` → commit `drizzle/` → `npm run db:migrate`.
+
+After a destructive schema cutover, reset only the factory projection database (not Temporal's separate Postgres):
 
 ```bash
 docker compose -f infra/compose/docker-compose.yml down -v postgres
@@ -37,16 +253,26 @@ docker compose -f infra/compose/docker-compose.yml up -d postgres
 npm run db:migrate
 ```
 
-Schema changes must be generated and reviewed: edit `src/db/schema.ts`, run `npm run db:generate`, commit the new file under `drizzle/`, then apply with `npm run db:migrate`.
-
 Integration tests against disposable PostgreSQL:
 
 ```bash
-docker run -d --name sf-test-postgres -e POSTGRES_USER=factory -e POSTGRES_PASSWORD=factory -e POSTGRES_DB=factory -p 5433:5432 postgres:17-alpine
+docker run -d --name sf-test-postgres \
+  -e POSTGRES_USER=factory -e POSTGRES_PASSWORD=factory -e POSTGRES_DB=factory \
+  -p 5433:5432 postgres:17-alpine
 npm run test:db
 ```
 
-The API requires PostgreSQL and Temporal. The worker additionally requires Crabbox, Hindsight, Pi resources, and deployment configuration. Startup fails rather than falling back to host-process or in-memory execution.
+Other useful commands:
+
+```bash
+npm test              # unit tests
+npm run db:studio     # Drizzle Studio
+npm run factory:contract:check   # product-graph contract validation
+```
+
+## Services
+
+All local dependencies are in [`infra/compose/docker-compose.yml`](infra/compose/docker-compose.yml). Temporal persistence uses a separate Postgres instance from the factory projection database. Phoenix observability is in [`infra/observability/docker-compose.phoenix.yml`](infra/observability/docker-compose.phoenix.yml) (profile `observability`).
 
 | Service | URL |
 |---------|-----|
@@ -56,28 +282,9 @@ The API requires PostgreSQL and Temporal. The worker additionally requires Crabb
 | LiteLLM | http://localhost:4000 |
 | Hindsight | http://localhost:8888 |
 | Phoenix (obs profile) | http://localhost:6006 |
+| Factory API | http://localhost:8787 |
 
-## Execution flow
-
-```text
-API / GitHub reconciliation
-  -> Temporal workflow
-  -> repository + worktree
-  -> security scan
-  -> scout -> plan -> implement
-  -> checks / bounded repair
-  -> review
-  -> immutable image build
-  -> digest-pinned deploy
-  -> health check / rollback
-  -> PostgreSQL projection
-```
-
-Pi sessions use immutable, role-specific resources inside Gondolin. Hindsight memory is scoped by organization/project and tagged by repository, run, role, and phase. Repository commands and builds run through Crabbox; the host process is never an execution fallback.
-
-## Services
-
-All local dependencies are defined in a single Compose file at [`infra/compose/docker-compose.yml`](infra/compose/docker-compose.yml). Temporal persistence uses a separate Postgres instance from the factory projection database. Optional observability is a single Phoenix container in [`infra/observability/docker-compose.phoenix.yml`](infra/observability/docker-compose.phoenix.yml), included via the `observability` profile. Factory processes export OTLP traces to Phoenix at `http://127.0.0.1:6006`; metrics export is opt-in via `OTEL_METRICS_EXPORTER_OTLP_ENDPOINT`.
+The API requires PostgreSQL and Temporal. The worker additionally requires Crabbox, Hindsight, Pi resources, and deployment configuration. Startup fails rather than falling back to host-process or in-memory execution.
 
 ## Data and SDK boundaries
 
@@ -91,3 +298,7 @@ All local dependencies are defined in a single Compose file at [`infra/compose/d
 | LLM routing / observability metadata | Pi model runtime → LiteLLM; correlation metadata in `src/integrations/correlation.ts` |
 
 Application code must not call `pool.query` directly or reimplement SDK transports for the integrations above.
+
+## Architecture decisions
+
+See [`docs/decisions/`](docs/decisions/) for ADRs on sandbox boundaries, role-specific agent resources, Phoenix observability, MCP governance, and 12-factor agent conformance.
