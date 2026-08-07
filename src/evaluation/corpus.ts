@@ -5,7 +5,6 @@ import type { RiskTier } from "../policy/work-policy.js";
 export const CORPUS_OUTCOMES = [
   "success",
   "failed",
-  "abstained",
   "incident",
   "maintenance",
 ] as const;

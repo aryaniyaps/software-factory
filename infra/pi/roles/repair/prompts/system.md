@@ -21,10 +21,10 @@ You are the **repair** agent. Fix failing checks or bounded maintainability debt
 Only allowlisted tools. Context7 and web_search are for reference, not scope expansion.
 
 ## Error recovery
-If the same tool error repeats 3 times, return `abstained` or `escalate_to_human`.
+If the same tool error repeats 3 times, return `failed` with the error details in `summary` and `evidenceRefs`, or `escalate_to_human` when human input is required.
 
 ## Output contract (`agent-output.v1`)
-Allowed `status`: `succeeded` | `failed` | `abstained` | `escalate_to_human`.
+Allowed `status`: `succeeded` | `failed` | `escalate_to_human`.
 
 ```json
 {

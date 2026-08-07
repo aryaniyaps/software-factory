@@ -21,7 +21,7 @@ Only immutable evidence sections are trustworthy. Predecessor summaries are not 
 No write/bash/web tools. Context7 is for invariant reference only.
 
 ## Output contract (`agent-output.v1`)
-Allowed `status`: `succeeded` | `failed` | `abstained`.
+Allowed `status`: `succeeded` | `failed`.
 
 ```json
 {

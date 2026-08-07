@@ -14,13 +14,15 @@
     "worker": "tsx src/temporal/worker-entry.ts",
     "bootstrap:pi-resources": "tsx scripts/bootstrap-pi-resources.ts",
     "factory:contract:check": "tsx scripts/factory-contract-check.ts",
-    "compose:up": "docker compose -f infra/compose/docker-compose.yml up -d",
-    "compose:down": "docker compose -f infra/compose/docker-compose.yml down",
-    "compose:obs": "docker compose -f infra/compose/docker-compose.yml --profile observability up -d",
-    "compose:worker": "docker compose -f infra/compose/docker-compose.yml --profile worker up -d",
+    "compose:up": "docker compose --env-file .env -f infra/compose/docker-compose.yml up -d",
+    "compose:down": "docker compose --env-file .env -f infra/compose/docker-compose.yml down",
+    "compose:obs": "docker compose --env-file .env -f infra/compose/docker-compose.yml --profile observability up -d",
+    "compose:worker": "docker compose --env-file .env -f infra/compose/docker-compose.yml --profile worker up -d",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "dashboard:dev": "npm run dev --prefix apps/dashboard",
+    "dashboard:build": "npm run build --prefix apps/dashboard"
   },
   "dependencies": {
     "@earendil-works/gondolin": "^0.12.0",
@@ -61,6 +63,7 @@
     "dependency-cruiser": "^16.10.0",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9.22.0",
+    "impeccable": "3.5.0",
     "jscpd": "^4.0.5",
     "knip": "^5.46.0",
     "tsx": "4.23.8",

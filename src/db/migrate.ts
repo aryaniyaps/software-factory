@@ -4,10 +4,8 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 
-const migrationsFolder = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../drizzle",
-);
+const migrationsFolder = process.env.DRIZZLE_MIGRATIONS_FOLDER
+  ?? path.join(process.cwd(), "drizzle");
 
 export async function runMigrations(connectionString = process.env.DATABASE_URL): Promise<void> {
   if (!connectionString) {

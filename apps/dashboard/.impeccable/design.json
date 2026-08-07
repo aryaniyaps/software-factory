@@ -1,0 +1,375 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-07T08:58:28Z",
+  "title": "Design System: Software Factory Dashboard",
+  "extensions": {
+    "colorMeta": {
+      "accent": {
+        "role": "primary",
+        "displayName": "Instrument Silver",
+        "canonical": "#c4cdd8",
+        "tonalRamp": [
+          "#1a1e24",
+          "#2e343d",
+          "#4a5360",
+          "#6b7685",
+          "#8b95a5",
+          "#a8b2c0",
+          "#c4cdd8",
+          "#e4e8ee"
+        ]
+      },
+      "accent-contrast": {
+        "role": "neutral",
+        "displayName": "Pit Ink (contrast)",
+        "canonical": "#0b0d10",
+        "tonalRamp": [
+          "#050607",
+          "#0b0d10",
+          "#12151a",
+          "#1c2128",
+          "#2a303a",
+          "#3d4654",
+          "#5a6575",
+          "#8b95a5"
+        ]
+      },
+      "bg": {
+        "role": "neutral",
+        "displayName": "Pit Ink",
+        "canonical": "#0b0d10",
+        "tonalRamp": [
+          "#050607",
+          "#0b0d10",
+          "#12151a",
+          "#1c2128",
+          "#2a303a",
+          "#3d4654",
+          "#5a6575",
+          "#8b95a5"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Panel Steel",
+        "canonical": "#12151a",
+        "tonalRamp": [
+          "#0b0d10",
+          "#12151a",
+          "#1a1e24",
+          "#252a33",
+          "#2a303a",
+          "#3d4654",
+          "#5a6575",
+          "#8b95a5"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Hairline Slate",
+        "canonical": "#252a33",
+        "tonalRamp": [
+          "#12151a",
+          "#1a1e24",
+          "#252a33",
+          "#2a303a",
+          "#3d4654",
+          "#5a6575",
+          "#8b95a5",
+          "#c4cdd8"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Signal Mist",
+        "canonical": "#d8dde6",
+        "tonalRamp": [
+          "#3d4654",
+          "#5a6575",
+          "#8b95a5",
+          "#a8b2c0",
+          "#c4cdd8",
+          "#d8dde6",
+          "#e8ebf0",
+          "#f4f6f8"
+        ]
+      },
+      "text-muted": {
+        "role": "neutral",
+        "displayName": "Quiet Mist",
+        "canonical": "#8b95a5",
+        "tonalRamp": [
+          "#2a303a",
+          "#3d4654",
+          "#5a6575",
+          "#6b7685",
+          "#8b95a5",
+          "#a8b2c0",
+          "#c4cdd8",
+          "#e4e8ee"
+        ]
+      },
+      "idle": {
+        "role": "neutral",
+        "displayName": "Idle Well",
+        "canonical": "#2a303a",
+        "tonalRamp": [
+          "#12151a",
+          "#1a1e24",
+          "#252a33",
+          "#2a303a",
+          "#3d4654",
+          "#5a6575",
+          "#8b95a5",
+          "#c4cdd8"
+        ]
+      },
+      "running": {
+        "role": "secondary",
+        "displayName": "Run Blue",
+        "canonical": "#3d8bfd",
+        "tonalRamp": [
+          "#0d1a33",
+          "#132a52",
+          "#1a3f7a",
+          "#245aa8",
+          "#3d8bfd",
+          "#6babff",
+          "#9cc7ff",
+          "#d0e4ff"
+        ]
+      },
+      "selection": {
+        "role": "secondary",
+        "displayName": "Selection Blue",
+        "canonical": "#3d8bfd",
+        "tonalRamp": [
+          "#0d1a33",
+          "#132a52",
+          "#1a3f7a",
+          "#245aa8",
+          "#3d8bfd",
+          "#6babff",
+          "#9cc7ff",
+          "#d0e4ff"
+        ]
+      },
+      "success": {
+        "role": "tertiary",
+        "displayName": "Pass Green",
+        "canonical": "#3ecf8e",
+        "tonalRamp": [
+          "#0c2419",
+          "#143d2a",
+          "#1c5c3e",
+          "#28865a",
+          "#3ecf8e",
+          "#6fdbaa",
+          "#a3ebc9",
+          "#d4f6e6"
+        ]
+      },
+      "warning": {
+        "role": "tertiary",
+        "displayName": "Warn Amber",
+        "canonical": "#e6b450",
+        "tonalRamp": [
+          "#2a1f0a",
+          "#463410",
+          "#6b4e18",
+          "#9a7028",
+          "#e6b450",
+          "#efc97a",
+          "#f5dca8",
+          "#faf0d4"
+        ]
+      },
+      "danger": {
+        "role": "tertiary",
+        "displayName": "Fail Coral",
+        "canonical": "#e85d5d",
+        "tonalRamp": [
+          "#2a1010",
+          "#4a1818",
+          "#752424",
+          "#a83838",
+          "#e85d5d",
+          "#ef8888",
+          "#f5b3b3",
+          "#fad9d9"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "title": {
+        "displayName": "Brand Title",
+        "purpose": "Header product name — mono, uppercase, 14px/600."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default operate copy on IBM Plex Sans at 13px/1.4."
+      },
+      "label": {
+        "displayName": "Section Label",
+        "purpose": "Sidebar section headings — mono uppercase muted."
+      },
+      "badge": {
+        "displayName": "Instrument Badge",
+        "purpose": "Status badges, buttons, and factory node readouts."
+      }
+    },
+    "shadows": [
+      {
+        "name": "focus-ring",
+        "value": "0 0 0 2px #0b0d10, 0 0 0 4px #3d8bfd",
+        "purpose": "Global :focus-visible ring on interactive controls."
+      },
+      {
+        "name": "selection-ring",
+        "value": "0 0 0 1px #3d8bfd",
+        "purpose": "Selected factory node outline."
+      },
+      {
+        "name": "running-pulse",
+        "value": "0 0 0 0–4px color-mix(in srgb, #3d8bfd 40%, transparent)",
+        "purpose": "Animated pulse on the current/running graph node (1.4s)."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-control",
+        "value": "0.15s ease",
+        "purpose": "Border/background/opacity transitions on buttons, inputs, run rows."
+      },
+      {
+        "name": "node-state",
+        "value": "0.2s ease",
+        "purpose": "Factory node border/shadow transitions."
+      },
+      {
+        "name": "running-pulse",
+        "value": "1.4s ease-in-out infinite",
+        "purpose": "Pulse keyframes on running nodes only."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "stack",
+        "value": "840px",
+        "purpose": "Sidebar stacks above main; upper band minmax(220px, 38vh)."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Neutral Create CTA — Instrument Silver fill, Pit Ink text.",
+      "html": "<button type=\"button\" class=\"ds-btn-primary\">Create task</button>",
+      "css": ".ds-btn-primary { padding: 5px 10px; border: 1px solid #c4cdd8; border-radius: 2px; background: #c4cdd8; color: #0b0d10; font-family: \"IBM Plex Mono\", \"SF Mono\", Consolas, monospace; font-size: 11px; letter-spacing: 0.02em; cursor: pointer; transition: filter 0.15s ease, opacity 0.15s ease; } .ds-btn-primary:hover { filter: brightness(1.08); } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px #0b0d10, 0 0 0 4px #3d8bfd; } .ds-btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "Default toolbar control — transparent with hairline border.",
+      "html": "<button type=\"button\" class=\"ds-btn\">Rerun node</button>",
+      "css": ".ds-btn { padding: 5px 10px; border: 1px solid #252a33; border-radius: 2px; background: transparent; color: #d8dde6; font-family: \"IBM Plex Mono\", \"SF Mono\", Consolas, monospace; font-size: 11px; letter-spacing: 0.02em; cursor: pointer; transition: border-color 0.15s ease, opacity 0.15s ease; } .ds-btn:hover { border-color: #8b95a5; } .ds-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px #0b0d10, 0 0 0 4px #3d8bfd; } .ds-btn:disabled { opacity: 0.4; cursor: not-allowed; }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Cancel run — coral outline, 12% wash on hover.",
+      "html": "<button type=\"button\" class=\"ds-btn-danger\">Cancel</button>",
+      "css": ".ds-btn-danger { padding: 5px 10px; border: 1px solid #e85d5d; border-radius: 2px; background: transparent; color: #e85d5d; font-family: \"IBM Plex Mono\", \"SF Mono\", Consolas, monospace; font-size: 11px; letter-spacing: 0.02em; cursor: pointer; transition: background 0.15s ease, opacity 0.15s ease; } .ds-btn-danger:hover { background: color-mix(in srgb, #e85d5d 12%, transparent); } .ds-btn-danger:focus-visible { outline: none; box-shadow: 0 0 0 2px #0b0d10, 0 0 0 4px #3d8bfd; } .ds-btn-danger:disabled { opacity: 0.4; cursor: not-allowed; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Create-form field — Pit Ink well, hairline border, 2px radius.",
+      "html": "<label class=\"ds-field\">Repository<input class=\"ds-input\" type=\"url\" placeholder=\"https://github.com/org/repo.git\" /></label>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 4px; font-family: \"IBM Plex Sans\", system-ui, sans-serif; font-size: 11px; color: #8b95a5; } .ds-input { padding: 6px 8px; border: 1px solid #252a33; border-radius: 2px; background: #0b0d10; color: #d8dde6; font: inherit; transition: border-color 0.15s ease; } .ds-input:hover { border-color: #8b95a5; } .ds-input:focus-visible { outline: none; box-shadow: 0 0 0 2px #0b0d10, 0 0 0 4px #3d8bfd; border-color: #252a33; }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "status-badge",
+      "description": "Uppercase mono status chip; fill is a 20% status wash.",
+      "html": "<span class=\"ds-badge ds-badge-running\">running</span>",
+      "css": ".ds-badge { display: inline-block; padding: 1px 6px; border-radius: 2px; font-family: \"IBM Plex Mono\", \"SF Mono\", Consolas, monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; } .ds-badge-running { background: color-mix(in srgb, #3d8bfd 20%, transparent); color: #3d8bfd; } .ds-badge-idle { background: #2a303a; color: #8b95a5; }"
+    },
+    {
+      "name": "Run List Item",
+      "kind": "nav",
+      "refersTo": "button",
+      "description": "Sidebar run row — mono id, badge meta, selection wash.",
+      "html": "<button type=\"button\" class=\"ds-run-item ds-run-item-selected\"><span class=\"ds-run-id\">run_01HXYZ</span><span class=\"ds-run-meta\"><span class=\"ds-badge ds-badge-running\">running</span><span>planner</span></span></button>",
+      "css": ".ds-run-item { display: block; width: 100%; padding: 10px 12px; border: none; border-bottom: 1px solid #252a33; background: transparent; color: inherit; text-align: left; cursor: pointer; font-family: \"IBM Plex Sans\", system-ui, sans-serif; transition: background 0.15s ease; } .ds-run-item:hover { background: color-mix(in srgb, #d8dde6 4%, transparent); } .ds-run-item-selected { background: color-mix(in srgb, #3d8bfd 12%, transparent); } .ds-run-item:focus-visible { outline: none; box-shadow: 0 0 0 2px #0b0d10, 0 0 0 4px #3d8bfd; } .ds-run-id { display: block; font-family: \"IBM Plex Mono\", \"SF Mono\", Consolas, monospace; font-size: 11px; color: #d8dde6; margin-bottom: 4px; } .ds-run-meta { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #8b95a5; } .ds-badge { display: inline-block; padding: 1px 6px; border-radius: 2px; font-family: \"IBM Plex Mono\", \"SF Mono\", Consolas, monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; } .ds-badge-running { background: color-mix(in srgb, #3d8bfd 20%, transparent); color: #3d8bfd; }"
+    },
+    {
+      "name": "Factory Node",
+      "kind": "custom",
+      "refersTo": "factory-node",
+      "description": "Pipeline graph node — mono readout; status border; selection ring.",
+      "html": "<div class=\"ds-factory-node ds-factory-node-running\">planner<span class=\"ds-attempt\">2 attempts</span></div>",
+      "css": ".ds-factory-node { padding: 6px 10px; border: 1px solid #252a33; border-radius: 2px; background: #12151a; font-family: \"IBM Plex Mono\", \"SF Mono\", Consolas, monospace; font-size: 10px; text-align: center; min-width: 120px; color: #d8dde6; transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.15s ease; } .ds-factory-node-running { border-color: #3d8bfd; color: #3d8bfd; box-shadow: 0 0 0 2px color-mix(in srgb, #3d8bfd 25%, transparent); } .ds-factory-node-selected { background: color-mix(in srgb, #3d8bfd 14%, #12151a); border-color: #3d8bfd; box-shadow: 0 0 0 1px #3d8bfd; } .ds-attempt { display: block; margin-top: 2px; font-size: 9px; opacity: 0.7; }"
+    },
+    {
+      "name": "Header Brand",
+      "kind": "nav",
+      "refersTo": "title",
+      "description": "Operate header — mono brand + muted subtitle.",
+      "html": "<header class=\"ds-header\"><h1 class=\"ds-brand\">Software Factory</h1><span class=\"ds-subtitle\">Operate — local pipeline monitor</span></header>",
+      "css": ".ds-header { display: flex; align-items: baseline; gap: 16px; padding: 14px 20px; border-bottom: 1px solid #252a33; background: #12151a; } .ds-brand { margin: 0; font-family: \"IBM Plex Mono\", \"SF Mono\", Consolas, monospace; font-size: 14px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #d8dde6; } .ds-subtitle { color: #8b95a5; font-family: \"IBM Plex Sans\", system-ui, sans-serif; font-size: 12px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Clinical Ops Console",
+    "overview": "This is a local operate surface, not a product marketing page. The built UI is a near-black, low-chrome monitor: pipeline state and actions first, surfaces that read as instrument panels rather than cards. IBM Plex Sans carries UI copy; IBM Plex Mono marks the instruments — brand title, section labels, run ids, buttons, badges, graph nodes, and event lines.\n\nDepth comes from tonal stacking (`#0b0d10` field / `#12151a` panels) and 1px `#252a33` borders. Chromatic color is reserved for run and node status. The Create CTA is a neutral cool-gray fill (`#c4cdd8` on `#0b0d10`), not a branded accent splash. Confirmed rejections: SaaS dashboard costume, gradients, card stacks, hero chrome, decorative glow as default elevation.",
+    "keyCharacteristics": [
+      "Near-black clinical field with one surface step up",
+      "1px hairline borders; essentially flat elevation",
+      "Dual type: Plex Sans UI + Plex Mono instruments",
+      "Status hues only for run/node state (and matching selection)",
+      "Dense operate layout: header / create+runs / toolbar+graph+outcome"
+    ],
+    "rules": [
+      {
+        "name": "The Status-Only Color Rule",
+        "body": "Chromatic color is for run/node status (and the matching selection cue). UI chrome, fills, and the primary CTA stay neutral.",
+        "section": "colors"
+      },
+      {
+        "name": "The Neutral CTA Rule",
+        "body": "Primary actions use Instrument Silver on Pit Ink — never a saturated brand fill.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mono Instrument Rule",
+        "body": "Run ids, node labels, buttons, badges, section titles, and event lines use IBM Plex Mono. Body explanation copy stays on Plex Sans.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Panel Rule",
+        "body": "Do not introduce drop shadows for resting chrome. Use tonal steps and 1px borders; rings only for focus, selection, or running pulse.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep chromatic color on status, selection, and danger affordances only.",
+      "Do use Instrument Silver for the primary Create action and links.",
+      "Do separate zones with 1px Hairline Slate and bg/surface tone steps.",
+      "Do put ids, nodes, buttons, and badges on IBM Plex Mono.",
+      "Do stack sidebar above graph below 840px with a real scrollable upper band."
+    ],
+    "donts": [
+      "Don't costume the console as a SaaS dashboard (card stacks, gradients, hero chrome, purple glow themes).",
+      "Don't introduce a saturated brand primary that competes with status blue/green/amber/coral.",
+      "Don't add resting drop shadows or large radii; keep the 2px control language.",
+      "Don't use display/marketing type scales — this surface has title/body/label/badge only."
+    ]
+  }
+}

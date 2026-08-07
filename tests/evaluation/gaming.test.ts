@@ -43,7 +43,6 @@ describe("evaluator validity and gaming agents", () => {
       caseOf("success-1", "success"),
       caseOf("failed-1", "failed"),
       caseOf("incident-1", "incident"),
-      caseOf("abstained-1", "abstained"),
     ]);
 
     const gamingResults = runGamingAgents(corpus);

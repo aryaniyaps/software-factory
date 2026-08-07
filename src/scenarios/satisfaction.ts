@@ -139,7 +139,7 @@ export function buildDistributions(runs: readonly ScenarioRunRecord[]): Scenario
 }
 
 export function decideSuiteOutcome(runs: readonly ScenarioRunRecord[]): Decision {
-  if (runs.some((run) => run.status === "invalid" || run.status === "noisy")) return "abstain";
+  if (runs.some((run) => run.status === "invalid" || run.status === "noisy")) return "fail";
   if (runs.every((run) => run.status === "succeeded" && run.satisfied)) return "pass";
   return "fail";
 }

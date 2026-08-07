@@ -48,14 +48,14 @@ const behaviorScenario: ScenarioDefinition = {
 };
 
 describe("scenario satisfaction", () => {
-  it("abstains for invalid scenarios instead of passing", () => {
+  it("fails for invalid scenarios instead of passing", () => {
     const invalid = markInvalidScenario("SCN-BAD", "attempt-1", "missing adapter");
     const suite = buildSuiteResult([invalid], ["trajectory:SCN-BAD:attempt-1:invalid"]);
-    expect(suite.decision).toBe("abstain");
-    expect(decideSuiteOutcome([invalid])).toBe("abstain");
+    expect(suite.decision).toBe("fail");
+    expect(decideSuiteOutcome([invalid])).toBe("fail");
   });
 
-  it("abstains for noisy scenarios with high variance", () => {
+  it("fails for noisy scenarios with high variance", () => {
     const noisy = classifyScenarioRun(
       { ...behaviorScenario, repeats: 4, maxVariance: 0.01 },
       [repeat(trajectory("SCN-BEHAVIOR", "baseline", 0, false))],
@@ -78,7 +78,7 @@ describe("scenario satisfaction", () => {
         repeat(trajectory("SCN-BEHAVIOR", "candidate", 3, false)),
       ],
     );
-    expect(buildSuiteResult([record], ["ev-1"]).decision).toBe("abstain");
+    expect(buildSuiteResult([record], ["ev-1"]).decision).toBe("fail");
   });
 
   it("links each acceptance criterion to trajectory evidence", () => {

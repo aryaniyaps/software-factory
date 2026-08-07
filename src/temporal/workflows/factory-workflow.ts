@@ -50,13 +50,12 @@ export const rerunNodeSignal = defineSignal<[FactoryNodeName]>("rerunNode");
 export const rollbackReleaseSignal = defineSignal("rollbackRelease");
 export const factoryStatusQuery = defineQuery<FactoryWorkflowState>("factoryStatus");
 
-function agentSucceeded(output: { status: "succeeded" | "failed" | "abstained" | "escalate_to_human"; summary: string }): boolean {
+function agentSucceeded(output: { status: "succeeded" | "failed" | "escalate_to_human"; summary: string }): boolean {
   return output.status === "succeeded";
 }
 
-function agentFailureName(status: "failed" | "abstained" | "escalate_to_human"): string {
+function agentFailureName(status: "failed" | "escalate_to_human"): string {
   if (status === "escalate_to_human") return "HumanEscalation";
-  if (status === "abstained") return "BudgetExhausted";
   return "PolicyViolation";
 }
 
@@ -130,14 +129,6 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     }
   };
 
-  const abstain = async (failedNode?: FactoryNodeName, worktreePath?: string) => {
-    state.status = "abstained";
-    state.failedNode = failedNode;
-    if (worktreePath) await controlActivity.removeWorktree(worktreePath);
-    await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "abstained", runId: input.runId });
-    return buildFinalState(state);
-  };
-
   const failRun = async (failedNode: FactoryNodeName, worktreePath?: string): Promise<FactoryWorkflowState> => {
     state.status = "failed";
     state.failedNode = failedNode;
@@ -208,7 +199,6 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     });
     state.budget = securityAttempt.budget;
     recordAttempts(securityAttempt.attemptRefs);
-    if (securityAttempt.abstained) return await abstain("security_scan", worktree.path);
     if (securityAttempt.failed) return await failRun("security_scan", worktree.path);
     checkCancelled();
     await maybeContinueAsNew(worktree, previous);
@@ -229,7 +219,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
           if (!agentSucceeded(result.output)) {
             const failedOutput = result.output;
             const error = new Error(`${role} agent ${failedOutput.status}: ${failedOutput.summary}`);
-            error.name = agentFailureName(failedOutput.status as "failed" | "abstained" | "escalate_to_human");
+            error.name = agentFailureName(failedOutput.status as "failed" | "escalate_to_human");
             throw error;
           }
           return result;
@@ -238,7 +228,6 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
       });
       state.budget = agentRun.budget;
       recordAttempts(agentRun.attemptRefs);
-      if (agentRun.abstained) return await abstain(role, worktree.path);
       if (agentRun.failed) return await failRun(role, worktree.path);
       previous = (agentRun.output as AgentActivityResult).output.data;
       checkCancelled();
@@ -256,7 +245,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
         if (!agentSucceeded(repair.output)) {
           const failedOutput = repair.output;
           const error = new Error(`repair agent ${failedOutput.status}: ${failedOutput.summary}`);
-          error.name = agentFailureName(failedOutput.status as "failed" | "abstained" | "escalate_to_human");
+          error.name = agentFailureName(failedOutput.status as "failed" | "escalate_to_human");
           throw error;
         }
         return repair.output;
@@ -265,7 +254,6 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     state.budget = repairLoop.budget;
     recordAttempts(repairLoop.checksAttempts);
     recordAttempts(repairLoop.repairAttempts);
-    if (repairLoop.abstained) return await abstain("deterministic_checks", worktree.path);
     if (!repairLoop.passed) return await failRun("deterministic_checks", worktree.path);
     if (repairLoop.repairOutput) previous = repairLoop.repairOutput.data;
     checkCancelled();
@@ -307,7 +295,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
           if (!agentSucceeded(critic.output)) {
             const failedOutput = critic.output;
             const error = new Error(`maintainability critic ${failedOutput.status}: ${failedOutput.summary}`);
-            error.name = agentFailureName(failedOutput.status as "failed" | "abstained" | "escalate_to_human");
+            error.name = agentFailureName(failedOutput.status as "failed" | "escalate_to_human");
             throw error;
           }
           criticReports.push(critic.output.data.report);
@@ -335,7 +323,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
         if (!agentSucceeded(repair.output)) {
           const failedOutput = repair.output;
           const error = new Error(`maintainability repair ${failedOutput.status}: ${failedOutput.summary}`);
-          error.name = agentFailureName(failedOutput.status as "failed" | "abstained" | "escalate_to_human");
+          error.name = agentFailureName(failedOutput.status as "failed" | "escalate_to_human");
           throw error;
         }
         return repair.output;
@@ -345,7 +333,6 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     recordAttempts(maintainabilityLoop.assessAttempts);
     recordAttempts(maintainabilityLoop.refactorAttempts);
     recordAttempts(maintainabilityLoop.behaviorAttempts);
-    if (maintainabilityLoop.abstained) return await abstain("maintainability_assess", worktree.path);
     if (maintainabilityLoop.failed) return await failRun("maintainability_assess", worktree.path);
     checkCancelled();
     await maybeContinueAsNew(worktree, previous);
@@ -362,9 +349,9 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
           worktree: worktree!,
           baselineRevision,
         });
-        if (verification.decision === "abstain") {
-          const error = new Error("behavioral verification abstained");
-          error.name = "BudgetExhausted";
+        if (verification.decision === "fail") {
+          const error = new Error(`behavioral verification failed: ${verification.decision}`);
+          error.name = "PolicyViolation";
           throw error;
         }
         if (!verification.passed) {
@@ -378,9 +365,6 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     state.budget = behavioralAttempt.budget;
     state.nodeAttempts = recordAttempt(state.nodeAttempts, behavioralAttempt.attemptRef);
     if (behavioralAttempt.result.status === "failed") {
-      if (behavioralAttempt.result.failure?.type === "budget") {
-        return await abstain("behavioral_verify", worktree.path);
-      }
       return await failRun("behavioral_verify", worktree.path);
     }
     checkCancelled();
@@ -405,7 +389,6 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     });
     state.budget = reviewRun.budget;
     recordAttempts(reviewRun.attemptRefs);
-    if (reviewRun.abstained) return await abstain("review", worktree.path);
     if (reviewRun.failed) return await failRun("review", worktree.path);
     checkCancelled();
     await maybeContinueAsNew(worktree, previous);
@@ -436,7 +419,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     state.nodeAttempts = recordAttempt(state.nodeAttempts, releaseAttempt.attemptRef);
     if (releaseAttempt.result.status === "failed") return await failRun("release_controller", worktree.path);
     const release = releaseAttempt.result.output!;
-    if (release.status === "abstained") return await abstain("release_controller", worktree.path);
+    if (release.status === "failed") return await failRun("release_controller", worktree.path);
     if (release.status === "rolled_back") {
       state.status = "rolled_back";
       state.failedNode = "release_controller";

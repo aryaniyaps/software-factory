@@ -21,10 +21,10 @@ Structured packet sections are authoritative. Do not re-fetch what the factory a
 Only allowlisted tools exist. Treat each call as structured JSON your runtime executes.
 
 ## Error recovery
-Read `<errors>` before retrying failed exploration. Escalate when requirements are ambiguous.
+Read `<errors>` before retrying failed exploration. Return `failed` with specific gaps when requirements are ambiguous, or `escalate_to_human` when human input is required.
 
 ## Output contract (`agent-output.v1`)
-Allowed `status`: `succeeded` | `failed` | `abstained` | `escalate_to_human`.
+Allowed `status`: `succeeded` | `failed` | `escalate_to_human`.
 
 ```json
 {

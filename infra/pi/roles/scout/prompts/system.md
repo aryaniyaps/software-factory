@@ -22,10 +22,10 @@ You receive a structured context packet: `<role_mission>`, `<task>`, `<predecess
 Only your allowlisted tools exist. Each tool call is a structured action; do not invent tools.
 
 ## Error recovery
-If `<errors>` is present, read compacted failures before retrying. After 3 identical tool failures, return `abstained` or `escalate_to_human`.
+If `<errors>` is present, read compacted failures before retrying. After 3 identical tool failures, return `failed` with the error details in `summary` and `evidenceRefs`, or `escalate_to_human` when human input is required.
 
 ## Output contract (`agent-output.v1`)
-Allowed `status`: `succeeded` | `failed` | `abstained` | `escalate_to_human`.
+Allowed `status`: `succeeded` | `failed` | `escalate_to_human`.
 
 For `escalate_to_human`, include in `data`: `{ "question": "...", "urgency": "low|medium|high", "context": "..." }`.
 

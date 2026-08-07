@@ -31,39 +31,14 @@ services:
       timeout: 3s
       retries: 10
 
-  litellm:
-    image: ghcr.io/berriai/litellm:main-v1.80.0-stable
-    command: ["--config", "/app/config.yaml", "--port", "4000"]
-    ports: ["4000:4000"]
-    volumes: ["./litellm.config.yaml:/app/config.yaml:ro"]
-    environment:
-      DATABASE_URL: ${DATABASE_URL:-postgres://factory:factory@postgres:5432/factory}
-      LITELLM_OTEL_V2: "true"
-      PHOENIX_COLLECTOR_ENDPOINT: http://phoenix:6006/v1/traces
-      PHOENIX_PROJECT_NAME: software-factory
-      FACTORY_MODEL: ${FACTORY_MODEL:-}
-      FACTORY_MODEL_API_KEY: ${FACTORY_MODEL_API_KEY:-}
-      FACTORY_MODEL_SCOUT: ${FACTORY_MODEL_SCOUT:-}
-      FACTORY_MODEL_SCOUT_API_KEY: ${FACTORY_MODEL_SCOUT_API_KEY:-}
-      FACTORY_MODEL_PLAN: ${FACTORY_MODEL_PLAN:-}
-      FACTORY_MODEL_PLAN_API_KEY: ${FACTORY_MODEL_PLAN_API_KEY:-}
-      FACTORY_MODEL_IMPLEMENT: ${FACTORY_MODEL_IMPLEMENT:-}
-      FACTORY_MODEL_IMPLEMENT_API_KEY: ${FACTORY_MODEL_IMPLEMENT_API_KEY:-}
-      FACTORY_MODEL_REPAIR: ${FACTORY_MODEL_REPAIR:-}
-      FACTORY_MODEL_REPAIR_API_KEY: ${FACTORY_MODEL_REPAIR_API_KEY:-}
-      FACTORY_MODEL_REVIEW: ${FACTORY_MODEL_REVIEW:-}
-      FACTORY_MODEL_REVIEW_API_KEY: ${FACTORY_MODEL_REVIEW_API_KEY:-}
-      FACTORY_MODEL_CRITIC: ${FACTORY_MODEL_CRITIC:-}
-      FACTORY_MODEL_CRITIC_API_KEY: ${FACTORY_MODEL_CRITIC_API_KEY:-}
-    depends_on:
-      postgres:
-        condition: service_healthy
-
   hindsight:
     image: ghcr.io/vectorize-io/hindsight:0.8.6
     ports: ["8888:8888", "9999:9999"]
     environment:
       HINDSIGHT_API_WORKER_ID: ${HINDSIGHT_API_WORKER_ID:-factory-local}
+      HINDSIGHT_API_LLM_PROVIDER: ${HINDSIGHT_API_LLM_PROVIDER:-openai}
+      HINDSIGHT_API_LLM_MODEL: ${HINDSIGHT_API_LLM_MODEL:-gpt-4o-mini}
+      HINDSIGHT_API_LLM_API_KEY: ${HINDSIGHT_API_LLM_API_KEY:-}
     volumes: [hindsight-data:/home/hindsight/.hindsight]
 
   temporal-postgres:
@@ -82,12 +57,11 @@ services:
   temporal:
     image: temporalio/auto-setup:1.29.3
     environment:
-      DB: postgresql
+      DB: postgres12
       DB_PORT: 5432
       POSTGRES_USER: temporal
       POSTGRES_PWD: temporal
       POSTGRES_SEEDS: temporal-postgres
-      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development.yaml
     ports: ["7233:7233"]
     depends_on:
       temporal-postgres:
@@ -115,7 +89,6 @@ services:
       FACTORY_WORKER_MODULE: /app/dist/temporal/production-worker.js
       DATABASE_URL: postgres://factory:factory@postgres:5432/factory
       HINDSIGHT_BASE_URL: http://hindsight:8888
-      LITELLM_BASE_URL: http://litellm:4000
     depends_on:
       temporal:
         condition: service_started
@@ -123,9 +96,6 @@ services:
         condition: service_healthy
       hindsight:
         condition: service_started
-      litellm:
-        condition: service_started
-
 volumes:
   postgres-data:
   hindsight-data:

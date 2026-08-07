@@ -71,26 +71,38 @@ export class HindsightMemory implements MemoryProvider {
   async bootstrapBank(bank: string, template: HindsightTemplate): Promise<string | undefined> {
     const validated = validateHindsightTemplate(template);
 
-    await this.client.createBank(bank, {
-      retainMission: validated.bank.retain_mission,
-      observationsMission: validated.bank.observations_mission,
-      reflectMission: validated.bank.reflect_mission,
-    });
+    try {
+      await this.client.createBank(bank, {
+        retainMission: validated.bank.retain_mission,
+        observationsMission: validated.bank.observations_mission,
+        reflectMission: validated.bank.reflect_mission,
+      });
+    } catch (error) {
+      if (!isHindsightAlreadyExists(error)) throw error;
+    }
 
     for (const directive of validated.bank.directives ?? []) {
-      await this.client.createDirective(bank, directive.slice(0, 64), directive);
+      try {
+        await this.client.createDirective(bank, directive.slice(0, 64), directive);
+      } catch (error) {
+        if (!isHindsightAlreadyExists(error)) throw error;
+      }
     }
 
     let lastOperationId: string | undefined;
     for (const model of validated.mental_models) {
-      const result = await this.client.createMentalModel(bank, model.name, model.source_query, {
-        id: model.id,
-        tags: model.tags,
-        trigger: model.trigger
-          ? { refreshAfterConsolidation: model.trigger.refresh_after_consolidation }
-          : undefined,
-      });
-      lastOperationId = result.operation_id;
+      try {
+        const result = await this.client.createMentalModel(bank, model.name, model.source_query, {
+          id: model.id,
+          tags: model.tags,
+          trigger: model.trigger
+            ? { refreshAfterConsolidation: model.trigger.refresh_after_consolidation }
+            : undefined,
+        });
+        lastOperationId = result.operation_id;
+      } catch (error) {
+        if (!isHindsightAlreadyExists(error)) throw error;
+      }
     }
 
     return lastOperationId;
@@ -131,4 +143,10 @@ export class HindsightMemory implements MemoryProvider {
       throw error;
     }
   }
+}
+
+function isHindsightAlreadyExists(error: unknown): boolean {
+  if (!(error instanceof HindsightError)) return false;
+  const detail = `${error.message}\n${error.details ?? ""}`.toLowerCase();
+  return detail.includes("already exists") || detail.includes("duplicate key");
 }

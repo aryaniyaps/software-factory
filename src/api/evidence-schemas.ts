@@ -95,7 +95,6 @@ export const RunGraphSchema = Type.Object({
   manifestHash: Type.Optional(Type.String()),
   outcome: Type.Object({
     passed: Type.Boolean(),
-    abstained: Type.Boolean(),
     rolledBack: Type.Boolean(),
     failed: Type.Boolean(),
     explanation: Type.String(),

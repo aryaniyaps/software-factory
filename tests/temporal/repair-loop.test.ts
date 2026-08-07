@@ -25,7 +25,6 @@ describe("repair loop characterization", () => {
       runRepair: async () => repairOutput(),
     });
     expect(result.passed).toBe(true);
-    expect(result.abstained).toBe(false);
     expect(result.checksAttempts).toHaveLength(1);
     expect(result.repairAttempts).toHaveLength(0);
     expect(result.checksAttempts[0].node).toBe("deterministic_checks");
@@ -59,7 +58,7 @@ describe("repair loop characterization", () => {
     ]);
   });
 
-  it("abstains after the final repair attempt when checks still fail", async () => {
+  it("fails after the final repair attempt when checks still fail", async () => {
     const result = await runRepairLoop({
       runId: "run-3",
       budget: { ...DEFAULT_WORKFLOW_BUDGET, maxRepairAttempts: 1 },
@@ -68,12 +67,11 @@ describe("repair loop characterization", () => {
       runRepair: async () => repairOutput(),
     });
     expect(result.passed).toBe(false);
-    expect(result.abstained).toBe(true);
     expect(result.repairAttempts).toHaveLength(1);
     expect(result.checksAttempts).toHaveLength(2);
   });
 
-  it("abstains when the repair budget is exhausted before another repair", async () => {
+  it("fails when the repair budget is exhausted before another repair", async () => {
     const result = await runRepairLoop({
       runId: "run-4",
       budget: {
@@ -86,7 +84,6 @@ describe("repair loop characterization", () => {
       runRepair: async () => repairOutput(),
     });
     expect(result.passed).toBe(false);
-    expect(result.abstained).toBe(true);
     expect(result.repairAttempts).toHaveLength(0);
   });
 

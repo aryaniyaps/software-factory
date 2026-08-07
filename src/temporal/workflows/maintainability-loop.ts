@@ -20,21 +20,14 @@ export interface MaintainabilityLoopResult {
   behaviorAttempts: NodeAttemptRef[];
   budget: WorkflowBudget;
   passed: boolean;
-  abstained: boolean;
   failed: boolean;
   report?: MaintainabilityAssessmentResult["report"];
-}
-
-function abstainResult(
-  partial: Pick<MaintainabilityLoopResult, "assessAttempts" | "refactorAttempts" | "behaviorAttempts" | "budget" | "report">,
-): MaintainabilityLoopResult {
-  return { ...partial, passed: false, abstained: true, failed: false };
 }
 
 function failResult(
   partial: Pick<MaintainabilityLoopResult, "assessAttempts" | "refactorAttempts" | "behaviorAttempts" | "budget" | "report">,
 ): MaintainabilityLoopResult {
-  return { ...partial, passed: false, abstained: false, failed: true };
+  return { ...partial, passed: false, failed: true };
 }
 
 export async function runMaintainabilityLoop(options: {
@@ -71,22 +64,22 @@ export async function runMaintainabilityLoop(options: {
 
   const handleAssessment = async (result: MaintainabilityAssessmentResult): Promise<MaintainabilityLoopResult | "continue_collect" | "continue_refactor"> => {
     if (result.outcome === "pass") {
-      return { ...base(), passed: true, abstained: false, failed: false, report: result.report };
+      return { ...base(), passed: true, failed: false, report: result.report };
     }
     if (result.outcome === "policy_block") {
-      return abstainResult({ ...base(), report: result.report });
+      return failResult({ ...base(), report: result.report });
     }
     if (result.outcome === "insufficient_evidence") {
       evidenceCollectionRounds += 1;
       if (evidenceCollectionRounds > options.policy.maxEvidenceCollectionRounds) {
-        return abstainResult({ ...base(), report: result.report });
+        return failResult({ ...base(), report: result.report });
       }
       return "continue_collect";
     }
     if (result.outcome === "repairable" && result.repairScope) {
       return "continue_refactor";
     }
-    return abstainResult({ ...base(), report: result.report });
+    return failResult({ ...base(), report: result.report });
   };
 
   let assessment = await recordAssessment();
@@ -113,7 +106,7 @@ export async function runMaintainabilityLoop(options: {
     let refactorAttempt = 1;
     while (refactorAttempt <= options.policy.maxRefactorAttempts) {
       if (isBudgetExhausted(budget)) {
-        return abstainResult({ ...base(), report: current.report });
+        return failResult({ ...base(), report: current.report });
       }
 
       const scope = current.repairScope!;
@@ -172,7 +165,7 @@ export async function runMaintainabilityLoop(options: {
     }
 
     if (current.outcome === "repairable") {
-      return abstainResult({ ...base(), report: current.report });
+      return failResult({ ...base(), report: current.report });
     }
   }
 }

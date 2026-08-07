@@ -18,7 +18,6 @@ describe("release state machine", () => {
       "promoted",
       "rolling_back",
       "rolled_back",
-      "abstained",
     ]);
   });
 
@@ -42,12 +41,6 @@ describe("release state machine", () => {
     expect(isLegalTransition("promoted", "canary_deployed")).toBe(false);
     expect(isLegalTransition("rolled_back", "preview_deployed")).toBe(false);
     expect(transition("built", "promotion_completed")).toBeNull();
-  });
-
-  it("allows abstention from assurance states before promotion", () => {
-    for (const state of ["built", "provenance_verified", "preview", "release_verified", "canary", "observing"] as const) {
-      expect(transition(state, "abstain")).toBe("abstained");
-    }
   });
 
   it("cannot promote without completing observation", () => {

@@ -69,16 +69,13 @@ export function createEvidenceService(input: {
       const gates = await input.readModel.listGateDecisions(runId);
       const deployments = await input.readModel.listDeployments(runId);
       const failedGates = gates.filter((gate) => gate.decision === "fail");
-      const abstainedGates = gates.filter((gate) => gate.decision === "abstain");
       const rolledBack = run.status === "rolled_back" || deployments.some((deployment) => deployment.status === "rolled_back");
       const failed = run.status === "failed" || failedGates.length > 0;
-      const abstained = run.status === "abstained" || abstainedGates.length > 0;
-      const passed = run.status === "succeeded" && !failed && !abstained && !rolledBack;
+      const passed = run.status === "succeeded" && !failed && !rolledBack;
       const explanation = buildOutcomeExplanation({
         status: run.status,
         failureReason: run.failureReason,
         failedGates,
-        abstainedGates,
         rolledBack,
         manifestHash: manifest?.hash,
       });
@@ -90,7 +87,6 @@ export function createEvidenceService(input: {
         manifestHash: manifest?.hash,
         outcome: {
           passed,
-          abstained,
           rolledBack,
           failed,
           explanation,
@@ -297,16 +293,11 @@ function buildOutcomeExplanation(input: {
   status: string;
   failureReason?: string;
   failedGates: Array<{ gateId: string; decision: string }>;
-  abstainedGates: Array<{ gateId: string; decision: string }>;
   rolledBack: boolean;
   manifestHash?: string;
 }): string {
   if (input.rolledBack) {
     return `Release rolled back; manifest ${input.manifestHash ?? "unknown"} records deployment observation failure.`;
-  }
-  if (input.status === "abstained" || input.abstainedGates.length > 0) {
-    const gates = input.abstainedGates.map((gate) => gate.gateId).join(", ");
-    return `Run abstained${gates ? ` after gates: ${gates}` : ""}; budget or policy prevented completion.`;
   }
   if (input.status === "failed" || input.failedGates.length > 0) {
     const gates = input.failedGates.map((gate) => gate.gateId).join(", ");

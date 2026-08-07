@@ -1,8 +1,7 @@
 import { ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentRunner } from "./runner.js";
-import { join } from "node:path";
 import { createGondolinSession } from "./gondolin-session.js";
-import { resolveModelId } from "./model-resolver.js";
+import { resolveModel } from "./model-resolver.js";
 import { harnessForRole } from "./role-harness.js";
 import { mcpToolsForRole, toolsForRole } from "./tool-policy.js";
 import { parseCriticReport } from "../assurance/maintainability/findings.js";
@@ -25,9 +24,16 @@ export class PiAgentRunner implements AgentRunner {
     const allowedTools = toolsForRole(input.role);
     const gateway = loadGatewayPolicyFromAllowlist(allowedTools);
     const factoryRoot = process.env.FACTORY_REPO_ROOT ?? process.cwd();
-    const modelRuntime = await ModelRuntime.create({ modelsPath: process.env.PI_MODELS_PATH ?? join(factoryRoot, "infra/pi/models.json") });
-    const modelId = resolveModelId(input.role);
-    const model = modelRuntime.getModel("litellm", modelId);
+    const { provider, modelId } = resolveModel(input.role);
+    const modelRuntime = await ModelRuntime.create({
+      // Built-in providers (openai-codex, etc.). Optional PI_MODELS_PATH for custom model overlays.
+      modelsPath: process.env.PI_MODELS_PATH ?? null,
+      ...(process.env.PI_AUTH_PATH ? { authPath: process.env.PI_AUTH_PATH } : {}),
+    });
+    const model = modelRuntime.getModel(provider, modelId);
+    if (!model) {
+      throw new Error(`Unknown model ${provider}/${modelId}. Check FACTORY_MODEL_PROVIDER / FACTORY_MODEL* and Pi auth.`);
+    }
     const mcpToolSet = new Set(mcpToolsForRole(input.role));
     const customTools = [
       ...createContext7McpTools().filter((tool) => gateway.isAllowed(tool.name) && mcpToolSet.has(tool.name)),
@@ -53,6 +59,7 @@ export class PiAgentRunner implements AgentRunner {
     });
     await withSpan("factory.agent.turn", {
       "factory.agent.role": input.role,
+      "factory.agent.provider": provider,
       "factory.agent.model": modelId,
       ...Object.fromEntries(Object.entries(input.metadata).map(([key, value]) => [`factory.${key}`, value])),
     }, async () => {

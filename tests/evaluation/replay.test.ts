@@ -67,18 +67,16 @@ describe("evaluation corpus replay", () => {
     const corpus = buildCorpusVersion("corpus.v1", [
       caseOf("success-1", "success"),
       caseOf("failed-1", "failed"),
-      caseOf("abstained-1", "abstained"),
       caseOf("incident-1", "incident"),
       caseOf("maintenance-1", "maintenance"),
     ]);
 
     expect(corpus.version).toBe("corpus.v1");
-    expect(corpus.cases).toHaveLength(5);
+    expect(corpus.cases).toHaveLength(4);
     expect(corpus.contentHash).toMatch(/^[a-f0-9]{64}$/);
     expect(corpus.cases.map((entry) => entry.outcome)).toEqual([
       "success",
       "failed",
-      "abstained",
       "incident",
       "maintenance",
     ]);

@@ -23,7 +23,6 @@ export interface RunNodeWithRetryResult<T> {
   attemptRefs: NodeAttemptRef[];
   budget: WorkflowBudget;
   output?: T;
-  abstained: boolean;
   failed: boolean;
 }
 
@@ -97,7 +96,7 @@ export async function runNodeWithRetry<T>(options: {
 
   while (attemptNumber <= options.maxAttempts) {
     if (isBudgetExhausted(budget)) {
-      return { attempts, attemptRefs, budget, abstained: true, failed: false };
+      return { attempts, attemptRefs, budget, failed: true };
     }
 
     const startedAtMs = Date.now();
@@ -119,16 +118,13 @@ export async function runNodeWithRetry<T>(options: {
       const output = attempt.result.output as T;
       const tokens = options.tokensUsed?.(output) ?? 0;
       if (tokens > 0) budget = consumeAgentAttempt(budget, tokens);
-      return { attempts, attemptRefs, budget, output, abstained: false, failed: false };
+      return { attempts, attemptRefs, budget, output, failed: false };
     }
 
     const failure = attempt.result.failure as FailureEnvelope;
     const decision = decideAfterFailure(failure, attemptNumber, options.maxAttempts, budget);
-    if (decision === "abstain") {
-      return { attempts, attemptRefs, budget, abstained: true, failed: false };
-    }
     if (decision === "fail") {
-      return { attempts, attemptRefs, budget, abstained: false, failed: true };
+      return { attempts, attemptRefs, budget, failed: true };
     }
 
     if (failure.type === "transient") {
@@ -137,5 +133,5 @@ export async function runNodeWithRetry<T>(options: {
     attemptNumber += 1;
   }
 
-  return { attempts, attemptRefs, budget, abstained: true, failed: false };
+  return { attempts, attemptRefs, budget, failed: true };
 }

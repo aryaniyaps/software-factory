@@ -25,7 +25,6 @@ const AgentOutputBase = {
   status: Type.Union([
     Type.Literal("succeeded"),
     Type.Literal("failed"),
-    Type.Literal("abstained"),
     Type.Literal("escalate_to_human"),
   ]),
   summary: Type.String({ minLength: 1 }),
@@ -37,7 +36,7 @@ export const AgentOutputSchema = Type.Union(AgentRoles.map((role) => Type.Object
 
 export interface AgentOutputBase {
   readonly schemaVersion: "agent-output.v1";
-  readonly status: "succeeded" | "failed" | "abstained" | "escalate_to_human";
+  readonly status: "succeeded" | "failed" | "escalate_to_human";
   readonly summary: string;
   readonly evidenceRefs: readonly string[];
   readonly data: JsonObject;
@@ -108,7 +107,7 @@ export const FactoryRunStateSchema = Type.Object({
   runId: Type.String({ minLength: 1 }),
   status: Type.Union([
     Type.Literal("running"), Type.Literal("succeeded"), Type.Literal("rolled_back"),
-    Type.Literal("abstained"), Type.Literal("failed"), Type.Literal("cancelled"),
+    Type.Literal("failed"), Type.Literal("cancelled"),
   ]),
   completedNodes: Type.Array(FactoryNodeNameSchema),
   nodeAttempts: Type.Array(NodeAttemptRefSchema),
@@ -120,7 +119,7 @@ export const FactoryRunStateSchema = Type.Object({
 export interface FactoryRunState {
   readonly schemaVersion: "factory-run.v1";
   readonly runId: string;
-  readonly status: "running" | "succeeded" | "rolled_back" | "abstained" | "failed" | "cancelled";
+  readonly status: "running" | "succeeded" | "rolled_back" | "failed" | "cancelled";
   readonly completedNodes: readonly FactoryNodeName[];
   readonly nodeAttempts: readonly NodeAttemptRef[];
   readonly currentNode?: FactoryNodeName;
@@ -135,6 +134,39 @@ function parse<T>(schema: TSchema, value: unknown): T {
   throw new Error(`Invalid node contract: ${error?.message || "schema mismatch"}`);
 }
 
+/** Pull a JSON value out of raw model text (plain JSON, fences, or surrounding prose). */
+export function extractJsonValue(text: string): unknown {
+  const trimmed = text.trim();
+  if (!trimmed) throw new Error("Invalid node contract: empty agent output");
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // continue
+  }
+
+  const fence = /```(?:json)?\s*([\s\S]*?)```/i.exec(trimmed);
+  if (fence?.[1]) {
+    try {
+      return JSON.parse(fence[1].trim());
+    } catch {
+      // continue
+    }
+  }
+
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    try {
+      return JSON.parse(trimmed.slice(start, end + 1));
+    } catch {
+      // continue
+    }
+  }
+
+  throw new Error("Invalid node contract: agent output is not valid JSON");
+}
+
 function validateMaintainabilityCriticData(data: JsonObject): void {
   if (!("report" in data)) {
     throw new Error("Invalid maintainability critic output: report required in data");
@@ -143,15 +175,29 @@ function validateMaintainabilityCriticData(data: JsonObject): void {
 }
 
 export function parseAgentOutput(value: unknown): AgentOutput {
-  const candidate = typeof value === "string" ? JSON.parse(value) : value;
+  const candidate = typeof value === "string" ? extractJsonValue(value) : value;
   const output = parse<AgentOutput>(AgentOutputSchema, candidate);
   if (output.role === "maintainability_critic") {
     validateMaintainabilityCriticData(output.data);
   }
-  if (output.status === "escalate_to_human") {
-    validateEscalationData(output.data);
-  }
-  return output;
+  return normalizeEscalation(output);
+}
+
+function normalizeEscalation(output: AgentOutput): AgentOutput {
+  if (output.status !== "escalate_to_human") return output;
+  const question = typeof output.data.question === "string" && output.data.question.trim()
+    ? output.data.question.trim()
+    : output.summary;
+  const urgency = output.data.urgency === "low" || output.data.urgency === "medium" || output.data.urgency === "high"
+    ? output.data.urgency
+    : undefined;
+  const data: JsonObject = {
+    ...Object.fromEntries(Object.entries(output.data).filter(([key]) => key !== "urgency")),
+    question,
+    ...(urgency ? { urgency } : {}),
+  };
+  validateEscalationData(data);
+  return { ...output, data };
 }
 
 function validateEscalationData(data: JsonObject): void {

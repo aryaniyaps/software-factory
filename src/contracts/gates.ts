@@ -1,7 +1,7 @@
 import { Type, type Static } from "typebox";
 import { Check, Errors } from "typebox/value";
 
-export const DecisionSchema = Type.Union([Type.Literal("pass"), Type.Literal("fail"), Type.Literal("abstain")]);
+export const DecisionSchema = Type.Union([Type.Literal("pass"), Type.Literal("fail")]);
 export type Decision = Static<typeof DecisionSchema>;
 
 export const GateReasonSchema = Type.Object({

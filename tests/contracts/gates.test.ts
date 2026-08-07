@@ -6,8 +6,8 @@ describe("gate and failure contracts", () => {
   const reason = { code: "checks.passed", message: "all checks passed" };
   const evidenceRefs = ["ev-checks"];
 
-  it("accepts pass, fail, and abstain decisions", () => {
-    for (const decision of ["pass", "fail", "abstain"] as const) {
+  it("accepts pass and fail decisions", () => {
+    for (const decision of ["pass", "fail"] as const) {
       expect(parseGateDecision({ schemaVersion: "gate.v1", gateId: "checks", decision, policyVersion: "policy-1", reasons: [reason], evidenceRefs }).decision).toBe(decision);
     }
   });

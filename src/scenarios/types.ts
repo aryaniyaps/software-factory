@@ -108,7 +108,7 @@ export interface ScenarioDistribution {
 
 export const ScenarioSuiteResultSchema = Type.Object({
   schemaVersion: Type.Literal("scenario-suite.v1"),
-  decision: Type.Union([Type.Literal("pass"), Type.Literal("fail"), Type.Literal("abstain")]),
+  decision: Type.Union([Type.Literal("pass"), Type.Literal("fail")]),
   policyVersion: Type.String({ minLength: 1 }),
   runs: Type.Array(Type.Object({
     scenarioId: Type.String(),

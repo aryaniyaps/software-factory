@@ -59,7 +59,6 @@ describe("maintainability loop workflow", () => {
       runRefactor: async () => agentOutput(),
     });
     expect(result.passed).toBe(true);
-    expect(result.abstained).toBe(false);
     expect(result.failed).toBe(false);
     expect(result.assessAttempts).toHaveLength(1);
     expect(result.refactorAttempts).toHaveLength(0);
@@ -159,10 +158,9 @@ describe("maintainability loop workflow", () => {
     });
     expect(result.passed).toBe(false);
     expect(result.failed).toBe(true);
-    expect(result.abstained).toBe(false);
   });
 
-  it("abstains when contradictory evidence cannot be resolved", async () => {
+  it("fails when contradictory evidence cannot be resolved", async () => {
     const result = await runMaintainabilityLoop({
       runId: "run-4",
       budget: { ...DEFAULT_WORKFLOW_BUDGET },
@@ -175,11 +173,11 @@ describe("maintainability loop workflow", () => {
       runBehaviorChecks: async () => ({ passed: true, output: "ok" }),
       runRefactor: async () => agentOutput(),
     });
-    expect(result.abstained).toBe(true);
+    expect(result.failed).toBe(true);
     expect(result.passed).toBe(false);
   });
 
-  it("abstains when refactor attempts are exhausted", async () => {
+  it("fails when refactor attempts are exhausted", async () => {
     const result = await runMaintainabilityLoop({
       runId: "run-5",
       budget: { ...DEFAULT_WORKFLOW_BUDGET, maxRepairAttempts: 1 },
@@ -200,7 +198,7 @@ describe("maintainability loop workflow", () => {
       runBehaviorChecks: async () => ({ passed: true, output: "ok" }),
       runRefactor: async () => agentOutput(),
     });
-    expect(result.abstained).toBe(true);
+    expect(result.failed).toBe(true);
     expect(result.refactorAttempts).toHaveLength(1);
   });
 

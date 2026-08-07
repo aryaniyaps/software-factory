@@ -14,7 +14,6 @@ export interface RepairLoopResult {
   repairAttempts: NodeAttemptRef[];
   budget: WorkflowBudget;
   passed: boolean;
-  abstained: boolean;
   repairOutput?: AgentOutput;
 }
 
@@ -41,7 +40,7 @@ export async function runRepairLoop(options: {
   checksAttempts.push(initial.attemptRef);
 
   if (initial.result.status === "succeeded" && initial.result.output?.passed) {
-    return { checksAttempts, repairAttempts, budget, passed: true, abstained: false };
+    return { checksAttempts, repairAttempts, budget, passed: true };
   }
 
   let repairAttempt = 1;
@@ -49,7 +48,7 @@ export async function runRepairLoop(options: {
 
   while (repairAttempt <= options.maxRepairAttempts) {
     if (isBudgetExhausted(budget)) {
-      return { checksAttempts, repairAttempts, budget, passed: false, abstained: true, repairOutput };
+      return { checksAttempts, repairAttempts, budget, passed: false, repairOutput };
     }
 
     budget = consumeRepairAttempt(budget, 0);
@@ -66,7 +65,7 @@ export async function runRepairLoop(options: {
     repairAttempts.push(repair.attemptRef);
 
     if (repair.result.status === "failed") {
-      return { checksAttempts, repairAttempts, budget, passed: false, abstained: false, repairOutput };
+      return { checksAttempts, repairAttempts, budget, passed: false, repairOutput };
     }
 
     repairOutput = repair.result.output as AgentOutput;
@@ -83,15 +82,11 @@ export async function runRepairLoop(options: {
     checksAttempts.push(recheck.attemptRef);
 
     if (recheck.result.status === "succeeded" && recheck.result.output?.passed) {
-      return { checksAttempts, repairAttempts, budget, passed: true, abstained: false, repairOutput };
+      return { checksAttempts, repairAttempts, budget, passed: true, repairOutput };
     }
 
     repairAttempt += 1;
   }
 
-  if (isBudgetExhausted(budget)) {
-    return { checksAttempts, repairAttempts, budget, passed: false, abstained: true, repairOutput };
-  }
-
-  return { checksAttempts, repairAttempts, budget, passed: false, abstained: false, repairOutput };
+  return { checksAttempts, repairAttempts, budget, passed: false, repairOutput };
 }

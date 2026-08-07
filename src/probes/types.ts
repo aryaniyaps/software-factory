@@ -104,7 +104,7 @@ export interface ProbeRunRecord {
 
 export const ProbeSuiteResultSchema = Type.Object({
   schemaVersion: Type.Literal("probe-suite.v1"),
-  decision: Type.Union([Type.Literal("pass"), Type.Literal("fail"), Type.Literal("abstain")]),
+  decision: Type.Union([Type.Literal("pass"), Type.Literal("fail")]),
   policyVersion: Type.String({ minLength: 1 }),
   bankVersion: Type.String({ minLength: 1 }),
   excludedProbeIds: Type.Array(Type.String()),

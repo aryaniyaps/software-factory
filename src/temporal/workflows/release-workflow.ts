@@ -21,7 +21,7 @@ export interface ReleaseWorkflowInput {
 }
 
 export interface ReleaseWorkflowResult {
-  status: "promoted" | "rolled_back" | "abstained" | "failed";
+  status: "promoted" | "rolled_back" | "failed";
   releaseState: ReleaseState;
   deploymentId: string;
   digest: string;
@@ -44,7 +44,7 @@ export async function releaseWorkflow(input: ReleaseWorkflowInput): Promise<Rele
   const preview = await deployActivity.deployPreview({ run: input.run, artifact: input.artifact, deploymentId });
   const previousDigest = preview.previousDigest;
   if (!previousDigest) {
-    return { status: "failed", releaseState: "abstained", deploymentId, digest, observationReasons: ["missing_previous_digest"] };
+    return { status: "failed", releaseState, deploymentId, digest, observationReasons: ["missing_previous_digest"] };
   }
   releaseState = advanceState(releaseState, "preview_deployed");
 
@@ -109,7 +109,7 @@ export async function releaseWorkflow(input: ReleaseWorkflowInput): Promise<Rele
     }
 
     if (observation.decision === "insufficient") {
-      return { status: "abstained", releaseState, deploymentId, digest, observationReasons: observation.reasons };
+      return { status: "failed", releaseState, deploymentId, digest, observationReasons: observation.reasons };
     }
 
     if (hasNextStage(DEFAULT_CANARY_POLICY, stageIndex)) {
@@ -124,6 +124,6 @@ export async function releaseWorkflow(input: ReleaseWorkflowInput): Promise<Rele
       releaseState = advanceState(releaseState, "promotion_completed");
       return { status: "promoted", releaseState, deploymentId, digest };
     }
-    return { status: "abstained", releaseState, deploymentId, digest, observationReasons: observation.reasons };
+    return { status: "failed", releaseState, deploymentId, digest, observationReasons: observation.reasons };
   }
 }

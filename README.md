@@ -15,28 +15,28 @@ flowchart LR
   maint -.->|refactor loop| maint
   maint --> bev[behavioral_verify] --> review --> build[build_artifact] --> release[release_controller]
   release -->|promoted| ok([succeeded])
-  release -->|else| stop([abstain / rollback / fail])
+  release -->|else| stop([fail / rollback])
 ```
 
 ### Nodes
 
-| Node | Kind | Queue | What it does | Model alias | Typical fail / abstain |
+| Node | Kind | Queue | What it does | Model alias | Typical failure |
 |------|------|-------|--------------|-------------|------------------------|
 | `prepare_repository` | deterministic | control | Clone or refresh the target repository into the cache | — | clone/fetch failure |
 | `create_worktree` | deterministic | control | Create an isolated git worktree for this run | — | worktree failure |
-| `security_scan` | deterministic | control | Scan the worktree for policy/security violations | — | reject or budget exhausted → abstain |
-| `scout` | agent | agent | Map repository reality without writing code | `factory/scout` | abstain / escalate / fail |
-| `plan` | agent | agent | Produce an actionable plan and acceptance checks | `factory/plan` | abstain / escalate / fail |
-| `implement` | agent | agent | Apply the plan in the worktree using TDD | `factory/implement` | fail / abstain |
+| `security_scan` | deterministic | control | Scan the worktree for policy/security violations | — | reject or budget exhausted → fail |
+| `scout` | agent | agent | Map repository reality without writing code | `FACTORY_MODEL_SCOUT` / default | escalate / fail |
+| `plan` | agent | agent | Produce an actionable plan and acceptance checks | `FACTORY_MODEL_PLAN` / default | escalate / fail |
+| `implement` | agent | agent | Apply the plan in the worktree using TDD | `FACTORY_MODEL_IMPLEMENT` / default | fail |
 | `deterministic_checks` | deterministic | build | Run lint, typecheck, unit tests, and other gates | — | fail → repair loop |
-| `repair` | agent | agent | Fix failing checks or scoped maintainability debt | `factory/repair` | fail after repair budget |
-| `maintainability_assess` | hybrid | build + agent | Fitness scoring + `maintainability_critic` agent + policy gate | `factory/critic` (nested) | policy block → abstain; repairable → refactor loop |
-| `behavioral_verify` | deterministic | verifier | Run behavioral scenarios against the worktree | — | abstain / fail |
-| `review` | agent | agent | Gate on correctness, security, and regressions | `factory/review` | abstain / fail |
+| `repair` | agent | agent | Fix failing checks or scoped maintainability debt | `FACTORY_MODEL_REPAIR` / default | fail after repair budget |
+| `maintainability_assess` | hybrid | build + agent | Fitness scoring + `maintainability_critic` agent + policy gate | `FACTORY_MODEL_CRITIC` (nested) | policy block → fail; repairable → refactor loop |
+| `behavioral_verify` | deterministic | verifier | Run behavioral scenarios against the worktree | — | fail |
+| `review` | agent | agent | Gate on correctness, security, and regressions | `FACTORY_MODEL_REVIEW` / default | fail |
 | `build_artifact` | deterministic | build | Build an immutable, digest-pinned container image | — | build failure |
-| `release_controller` | deploy | deploy | Preview deploy, canary (10%→50%→100%), observe, promote or rollback | — | abstain / rollback / fail |
+| `release_controller` | deploy | deploy | Preview deploy, canary (10%→50%→100%), observe, promote or rollback | — | fail / rollback |
 
-Model aliases are used only when the matching `FACTORY_MODEL_<ROLE>` env var is set; otherwise every agent role uses `factory/default`. See [Configure models](#configure-models).
+Model selection uses `FACTORY_MODEL` (and optional `FACTORY_MODEL_<ROLE>` overrides) against a Pi provider such as `openai-codex`. See [Configure models](#configure-models).
 
 ### Edges and assembly lines
 
@@ -59,10 +59,10 @@ Model aliases are used only when the matching `FACTORY_MODEL_<ROLE>` env var is 
 | `review` | `build_artifact` | ok | agent `succeeded`; max 2 attempts |
 | `build_artifact` | `release_controller` | ok | image built |
 | `release_controller` | *(terminal)* | promoted | canary stages 10% → 50% → 100% |
-| `release_controller` | *(terminal)* | else | `abstained`, `rolled_back`, or `failed` |
+| `release_controller` | *(terminal)* | else | `rolled_back` or `failed` |
 | any | *(terminal)* | cancel | `cancelFactory` signal → `cancelled` |
 
-**Terminals:** `succeeded`, `failed`, `abstained`, `rolled_back`, `cancelled`.
+**Terminals:** `succeeded`, `failed`, `rolled_back`, `cancelled`.
 
 ## Prerequisites
 
@@ -72,7 +72,7 @@ Model aliases are used only when the matching `FACTORY_MODEL_<ROLE>` env var is 
 | Docker + Docker Compose | Local stack and Crabbox container runtime |
 | [Crabbox](https://github.com/nicobailon/crabbox) CLI | Worker fails closed without `crabbox --version` on PATH |
 | `pi` CLI | Required for `npm run bootstrap:pi-resources` |
-| LLM provider key(s) | Routed through LiteLLM (`FACTORY_MODEL` at minimum) |
+| Pi provider auth | Codex OAuth in `~/.pi/agent/auth.json`, or another Pi builtin provider |
 | SSH access to deploy host | For digest-pinned staging deploy (`FACTORY_DEPLOY_HOST`) |
 | Optional | Context7 API key, web-search provider keys, Phoenix (`compose:obs`) |
 
@@ -82,7 +82,7 @@ Model aliases are used only when the matching `FACTORY_MODEL_<ROLE>` env var is 
 # 1. Install Crabbox and verify it works
 crabbox --version
 
-# 2. Start local dependencies (Postgres, Temporal, LiteLLM, Hindsight)
+# 2. Start local dependencies (Postgres, Temporal, Hindsight)
 npm run compose:up
 
 # 3. Configure environment
@@ -101,7 +101,7 @@ npm run bootstrap:pi-resources
 
 # 6. Start API and worker (two terminals)
 npm run dev       # API on FACTORY_PORT (default 8787)
-npm run worker    # requires FACTORY_WORKER_MODULE=dist/temporal/production-worker.js
+npm run worker    # requires FACTORY_WORKER_MODULE=dist/src/temporal/production-worker.js
 ```
 
 The API and worker run `npm run db:migrate` automatically on startup.
@@ -112,36 +112,63 @@ The API and worker run `npm run db:migrate` automatically on startup.
 |----------|---------|
 | `DATABASE_URL` | Factory projection database |
 | `TEMPORAL_ADDRESS` | Temporal gRPC (`localhost:7233`) |
-| `FACTORY_MODEL` + `FACTORY_MODEL_API_KEY` | Default LLM via LiteLLM |
-| `LITELLM_API_KEY` | Pi → LiteLLM auth (can be any non-empty string locally) |
+| `FACTORY_MODEL_PROVIDER` + `FACTORY_MODEL` | Pi provider + default model (e.g. `openai-codex` / `gpt-5.6-luna`) |
 | `FACTORY_ORGANIZATION` + `FACTORY_PROJECT` | Hindsight memory bank scope |
 | `FACTORY_IMAGE` | Container image name for build activities |
 | `FACTORY_DEPLOY_HOST` + `FACTORY_HEALTH_URL` | Staging deploy target and health check |
-| `FACTORY_WORKER_MODULE` | `dist/temporal/production-worker.js` |
+| `FACTORY_WORKER_MODULE` | `dist/src/temporal/production-worker.js` |
 | `PI_RESOURCE_ROOT` | Writable path for bootstrapped Pi resources |
 
 ## Configure models
 
-By default every agent role uses one model: set `FACTORY_MODEL` and `FACTORY_MODEL_API_KEY`, and Pi sessions call the `factory/default` LiteLLM alias.
-
-To use different models per role, set the role-specific env var. When set, that role switches to its harness alias:
-
-| Role | Env var | LiteLLM alias | Aptness |
-|------|---------|---------------|---------|
-| scout | `FACTORY_MODEL_SCOUT` | `factory/scout` | Faster / cheaper exploration |
-| plan | `FACTORY_MODEL_PLAN` | `factory/plan` | Strong reasoning |
-| implement | `FACTORY_MODEL_IMPLEMENT` | `factory/implement` | Strong coding |
-| repair | `FACTORY_MODEL_REPAIR` | `factory/repair` | Strong debugging |
-| review | `FACTORY_MODEL_REVIEW` | `factory/review` | Strong judgment / security |
-| maintainability_critic | `FACTORY_MODEL_CRITIC` | `factory/critic` | Strong analysis, read-only |
-
-Each role also has a matching `FACTORY_MODEL_<ROLE>_API_KEY`. Aliases are defined in [`infra/compose/litellm.config.yaml`](infra/compose/litellm.config.yaml) and registered in [`infra/pi/models.json`](infra/pi/models.json). Restart Compose after changing model env vars:
+Agents call Pi builtin providers directly (default `openai-codex`). Auth for Codex subscription comes from `~/.pi/agent/auth.json` (override with `PI_AUTH_PATH`).
 
 ```bash
-npm run compose:down && npm run compose:up
+FACTORY_MODEL_PROVIDER=openai-codex
+FACTORY_MODEL=gpt-5.6-luna
+# Optional per-role overrides (concrete model ids):
+FACTORY_MODEL_PLAN=gpt-5.6-luna
+FACTORY_MODEL_IMPLEMENT=gpt-5.6-luna
+# FACTORY_MODEL_SCOUT=
+# FACTORY_MODEL_REPAIR=
+# FACTORY_MODEL_REVIEW=
+# FACTORY_MODEL_CRITIC=
 ```
 
-Model selection is resolved in [`src/agents/model-resolver.ts`](src/agents/model-resolver.ts) from [`src/agents/role-harness.ts`](src/agents/role-harness.ts).
+| Role | Env var | Aptness |
+|------|---------|---------|
+| scout | `FACTORY_MODEL_SCOUT` | Faster / cheaper exploration |
+| plan | `FACTORY_MODEL_PLAN` | Strong reasoning |
+| implement | `FACTORY_MODEL_IMPLEMENT` | Strong coding |
+| repair | `FACTORY_MODEL_REPAIR` | Strong debugging |
+| review | `FACTORY_MODEL_REVIEW` | Strong judgment / security |
+| maintainability_critic | `FACTORY_MODEL_CRITIC` | Strong analysis, read-only |
+
+Resolution lives in [`src/agents/model-resolver.ts`](src/agents/model-resolver.ts). Restart the worker after changing model env vars.
+
+## Local dashboard
+
+A minimal Vite + React dashboard lives at `apps/dashboard/` for local run monitoring (list runs, create tasks, live pipeline graph, cancel/rerun). It proxies API calls to the factory server — no CORS changes required.
+
+```bash
+# Terminal 1 — infrastructure + API
+npm run compose:up
+npm run dev
+
+# Terminal 2 — Temporal worker
+npm run worker
+
+# Terminal 3 — dashboard (http://localhost:5173)
+npm run dashboard:dev
+```
+
+If `FACTORY_API_TOKEN` is set on the API server, copy it to `apps/dashboard/.env` as `VITE_FACTORY_API_TOKEN` for write routes (create task, cancel, rerun).
+
+Build the dashboard for a production bundle check:
+
+```bash
+npm run dashboard:build
+```
 
 ## Start a run
 
@@ -198,11 +225,11 @@ npm run compose:down
 
 | Variable | Required |
 |----------|----------|
-| `LITELLM_BASE_URL` | yes |
-| `LITELLM_API_KEY` | yes |
-| `FACTORY_MODEL` / `FACTORY_MODEL_API_KEY` | yes (quick start) |
-| `FACTORY_MODEL_<ROLE>` / `FACTORY_MODEL_<ROLE>_API_KEY` | no (per-role override) |
-| `PI_MODELS_PATH` | no (`infra/pi/models.json`) |
+| `FACTORY_MODEL_PROVIDER` | no (`openai-codex`) |
+| `FACTORY_MODEL` | no (`gpt-5.6-luna`) |
+| `FACTORY_MODEL_<ROLE>` | no (per-role override) |
+| `PI_AUTH_PATH` | no (defaults to `~/.pi/agent/auth.json`) |
+| `PI_MODELS_PATH` | no (optional custom models overlay; builtins used when unset) |
 
 ### Agents and sandbox
 
@@ -279,7 +306,6 @@ All local dependencies are in [`infra/compose/docker-compose.yml`](infra/compose
 | Factory PostgreSQL | `localhost:5432` |
 | Temporal gRPC | `localhost:7233` |
 | Temporal UI | http://localhost:8080 |
-| LiteLLM | http://localhost:4000 |
 | Hindsight | http://localhost:8888 |
 | Phoenix (obs profile) | http://localhost:6006 |
 | Factory API | http://localhost:8787 |
@@ -295,10 +321,18 @@ The API requires PostgreSQL and Temporal. The worker additionally requires Crabb
 | Agent memory (recall/reflect/retain) | `@vectorize-io/hindsight-client` |
 | Context7 research | `@modelcontextprotocol/client` (Streamable HTTP transport) |
 | GitHub Projects | `@octokit/graphql` |
-| LLM routing / observability metadata | Pi model runtime → LiteLLM; correlation metadata in `src/integrations/correlation.ts` |
+| LLM routing / observability metadata | Pi model runtime (`openai-codex` etc.); correlation metadata in `src/integrations/correlation.ts`; OTEL → Phoenix when `compose:obs` |
 
 Application code must not call `pool.query` directly or reimplement SDK transports for the integrations above.
 
 ## Architecture decisions
 
 See [`docs/decisions/`](docs/decisions/) for ADRs on sandbox boundaries, role-specific agent resources, Phoenix observability, MCP governance, and 12-factor agent conformance.
+
+## Impeccable (design skill)
+
+This repo ships [Impeccable](https://impeccable.style/) for Cursor and factory Pi agents (`implement`, `review`).
+
+**Cursor:** Enable **Agent Skills** in Cursor settings so `.cursor/skills/impeccable/` loads. Refresh the project install with `npx impeccable update`. Before UI work, run `/impeccable init` in chat to capture product/design context.
+
+**Factory Pi:** The Pi skill is vendored at `src/agents/skills/impeccable/` (see `REVISION` for the pinned version). Refresh with `tsx scripts/vendor-impeccable.ts [version]`, then `npm run bootstrap:pi-resources`.

@@ -136,7 +136,7 @@ function createActivities(options: MockOptions = {}) {
       calls.push(`agent:${role}`);
       agentInvocations.push({ role, input });
       if (options.exhaustedBudget) {
-        return { sessionId: role, output: agentOutput(role, "abstained") };
+        return { sessionId: role, output: agentOutput(role, "failed") };
       }
       if (role === "maintainability_critic") {
         criticCalls += 1;
@@ -354,10 +354,10 @@ describe.sequential("factory workflow policy execution", () => {
     expect(result!.nodeAttempts.some((attempt) => attempt.node === "repair")).toBe(true);
   }, temporalTimeoutMs);
 
-  it("returns abstained when budget is exhausted", async () => {
+  it("returns failed when budget is exhausted", async () => {
     const { result, threw } = await runFactoryTest({ exhaustedBudget: true });
-    expect(threw).toBe(false);
-    expect(result!.status).toBe("abstained");
+    expect(threw).toBe(true);
+    expect(result).toBeUndefined();
   }, temporalTimeoutMs);
 
   it("fails security violations without running agents", async () => {
@@ -367,9 +367,9 @@ describe.sequential("factory workflow policy execution", () => {
     expect(calls).toContain("security_scan");
   }, temporalTimeoutMs);
 
-  it("cleans up worktree on abstain", async () => {
+  it("cleans up worktree on failure", async () => {
     const { calls, threw } = await runFactoryTest({ exhaustedBudget: true });
-    expect(threw).toBe(false);
+    expect(threw).toBe(true);
     expect(calls.some((call) => call.startsWith("cleanup:"))).toBe(true);
   }, temporalTimeoutMs);
 

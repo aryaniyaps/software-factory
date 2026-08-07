@@ -22,7 +22,7 @@ export const DEFAULT_WORKFLOW_BUDGET: WorkflowBudget = {
   tokensUsed: 0,
 };
 
-export type RetryDecision = "retry" | "abstain" | "fail";
+export type RetryDecision = "retry" | "fail";
 
 const NON_RETRYABLE_TYPES: readonly FailureType[] = ["policy", "security", "invalid_input"];
 
@@ -47,6 +47,9 @@ export function classifyFailure(error: unknown): FailureEnvelope {
   }
   if (name === "BudgetExhausted" || message.includes("budget")) {
     return envelope("budget", "BUDGET_EXHAUSTED", message, false);
+  }
+  if (name === "HumanEscalation" || message.includes("escalate_to_human")) {
+    return envelope("budget", "HUMAN_ESCALATION", message, false);
   }
   if (message.includes("timeout") || message.includes("transient")) {
     return envelope("transient", "TRANSIENT", message, true);
@@ -90,9 +93,9 @@ export function decideAfterFailure(
   maxAttempts: number,
   budget: WorkflowBudget,
 ): RetryDecision {
-  if (isBudgetExhausted(budget) || failure.type === "budget") return "abstain";
+  if (isBudgetExhausted(budget) || failure.type === "budget") return "fail";
   if (!failure.retryable || NON_RETRYABLE_TYPES.includes(failure.type)) return "fail";
-  if (attemptNumber >= maxAttempts) return "abstain";
+  if (attemptNumber >= maxAttempts) return "fail";
   return "retry";
 }
 

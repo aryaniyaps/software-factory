@@ -6,7 +6,7 @@ export interface McpServerSpec {
   readonly allowedTools: readonly string[];
 }
 
-export type TerminalStatus = "succeeded" | "failed" | "abstained" | "escalate_to_human";
+export type TerminalStatus = "succeeded" | "failed" | "escalate_to_human";
 
 export interface RoleHarnessSpec {
   readonly role: AgentRole;
@@ -48,13 +48,13 @@ const REPAIR_BUILTINS = [...IMPLEMENT_BUILTINS, "web_search"] as const;
 const REVIEW_BUILTINS = [...READ_ONLY_BUILTINS, "web_search"] as const;
 const CRITIC_BUILTINS = [...READ_ONLY_BUILTINS] as const;
 
-const ESCALATE_TERMINALS: TerminalStatus[] = ["succeeded", "failed", "abstained", "escalate_to_human"];
-const STANDARD_TERMINALS: TerminalStatus[] = ["succeeded", "failed", "abstained"];
+const ESCALATE_TERMINALS: TerminalStatus[] = ["succeeded", "failed", "escalate_to_human"];
+const STANDARD_TERMINALS: TerminalStatus[] = ["succeeded", "failed"];
 
 export const ROLE_HARNESS_SPECS: Record<AgentRole, RoleHarnessSpec> = {
   scout: {
     role: "scout",
-    modelId: "factory/scout",
+    modelId: "gpt-5.6-luna",
     mission: "Map repository reality for this ticket without writing code or inventing requirements.",
     skills: [
       "src/agents/skills/engineering/research/SKILL.md",
@@ -74,7 +74,7 @@ export const ROLE_HARNESS_SPECS: Record<AgentRole, RoleHarnessSpec> = {
   },
   plan: {
     role: "plan",
-    modelId: "factory/plan",
+    modelId: "gpt-5.6-luna",
     mission: "Produce an actionable plan and acceptance checks from scout output and the task.",
     skills: [
       "src/agents/skills/engineering/codebase-design/SKILL.md",
@@ -95,11 +95,12 @@ export const ROLE_HARNESS_SPECS: Record<AgentRole, RoleHarnessSpec> = {
   },
   implement: {
     role: "implement",
-    modelId: "factory/implement",
+    modelId: "gpt-5.6-luna",
     mission: "Apply the approved plan in the worktree using TDD without redesigning product scope.",
     skills: [
       "src/agents/skills/engineering/implement/SKILL.md",
       "src/agents/skills/engineering/tdd/SKILL.md",
+      "src/agents/skills/impeccable/SKILL.md",
     ],
     mentalModels: ["repository-conventions", "test-failures"],
     hindsightOperations: ["recall", "retain"],
@@ -115,7 +116,7 @@ export const ROLE_HARNESS_SPECS: Record<AgentRole, RoleHarnessSpec> = {
   },
   repair: {
     role: "repair",
-    modelId: "factory/repair",
+    modelId: "gpt-5.6-luna",
     mission: "Fix failing checks or scoped maintainability debt without broad refactors outside failure scope.",
     skills: [
       "src/agents/skills/engineering/diagnosing-bugs/SKILL.md",
@@ -136,11 +137,12 @@ export const ROLE_HARNESS_SPECS: Record<AgentRole, RoleHarnessSpec> = {
   },
   review: {
     role: "review",
-    modelId: "factory/review",
+    modelId: "gpt-5.6-luna",
     mission: "Gate on correctness, security, regressions, and maintainability without fixing code.",
     skills: [
       "src/agents/skills/engineering/code-review/SKILL.md",
       "src/agents/skills/engineering/diagnosing-bugs/SKILL.md",
+      "src/agents/skills/impeccable/SKILL.md",
     ],
     mentalModels: ["architecture", "deployment-safety", "test-failures"],
     hindsightOperations: ["recall", "reflect", "retain"],
@@ -156,7 +158,7 @@ export const ROLE_HARNESS_SPECS: Record<AgentRole, RoleHarnessSpec> = {
   },
   maintainability_critic: {
     role: "maintainability_critic",
-    modelId: "factory/critic",
+    modelId: "gpt-5.6-luna",
     mission: "Emit a fitness/critic report from immutable evidence without trusting implementer narrative.",
     skills: [
       "src/agents/skills/engineering/code-review/SKILL.md",

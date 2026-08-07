@@ -7,13 +7,14 @@ import {
 } from "../../src/agents/role-harness.js";
 import { AgentRoles } from "../../src/contracts/nodes.js";
 import { McpSecurityGateway } from "../../src/agents/mcp-gateway.js";
+import { DEFAULT_FACTORY_MODEL_ID } from "../../src/agents/model-resolver.js";
 
 describe("RoleHarnessSpec", () => {
   it("defines a harness for every agent role", () => {
     for (const role of AgentRoles) {
       expect(ROLE_HARNESS_SPECS[role]).toBeDefined();
       expect(harnessForRole(role).role).toBe(role);
-      expect(harnessForRole(role).modelId).toMatch(/^factory\//);
+      expect(harnessForRole(role).modelId).toBe(DEFAULT_FACTORY_MODEL_ID);
     }
   });
 
