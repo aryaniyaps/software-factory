@@ -157,11 +157,12 @@ export function createGitHubAppService(
       const search = input.search?.trim().toLowerCase() ?? "";
       const active = await installations.listActive();
       const collected: GitHubRepositorySummary[] = [];
+      let remoteHasMore = false;
 
       for (const installation of active) {
         const octokit = await installationOctokit(installation.installationId);
         let githubPage = 1;
-        while (collected.length < page * perPage) {
+        while (collected.length < page * perPage + 1) {
           const response = await octokit.rest.apps.listReposAccessibleToInstallation({
             per_page: 100,
             page: githubPage,
@@ -176,7 +177,9 @@ export function createGitHubAppService(
               defaultBranch: repo.default_branch ?? "main",
             });
           }
-          if (response.data.repositories.length < 100) break;
+          const pageHasMore = response.data.repositories.length === 100;
+          remoteHasMore ||= pageHasMore;
+          if (!pageHasMore) break;
           githubPage += 1;
           if (githubPage > 20) break;
         }
@@ -186,7 +189,7 @@ export function createGitHubAppService(
         .sort((left, right) => left.fullName.localeCompare(right.fullName));
       const start = (page - 1) * perPage;
       const items = unique.slice(start, start + perPage);
-      return { items, hasMore: start + perPage < unique.length };
+      return { items, hasMore: start + perPage < unique.length || remoteHasMore };
     },
 
     async installationTokenForRepo(fullName) {

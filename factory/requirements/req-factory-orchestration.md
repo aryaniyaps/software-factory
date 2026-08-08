@@ -9,6 +9,7 @@ blueprints:
 traces:
   - src/temporal/**
   - src/workspaces/crabbox-runtime.ts
+  - src/integrations/github-app.ts
 ---
 
 The factory must execute managed work through a durable Temporal workflow with explicit node attempts.
