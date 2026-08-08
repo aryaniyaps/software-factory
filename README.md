@@ -250,6 +250,7 @@ npm run compose:down
 | `PI_RESOURCE_ROOT` | yes (writable; bootstrap target) |
 | `CRABBOX_BIN` | no (`crabbox`) |
 | `CRABBOX_SLUG_PREFIX` | no |
+| `CRABBOX_LOCAL_CONTAINER_IMAGE` | no; Node-capable local-container image for repository checks |
 | `GONDOLIN_EXTENSION_PATH` | no |
 | `WORKTREE_ROOT` | no |
 | `REPOSITORY_CACHE_ROOT` | no |

@@ -14,7 +14,7 @@ import { createFilesystemObjectStore } from "../evidence/object-store.js";
 import { createAgentExecutionRecorder } from "../evidence/agent-execution-recorder.js";
 import { PiAgentRunner } from "../agents/pi-agent.js";
 import { CrabboxWorkspaceProvider } from "../workspaces/crabbox-provider.js";
-import { officialCrabboxRuntime } from "../workspaces/crabbox-runtime.js";
+import { createCrabboxRuntime, officialCrabboxCommandRunner } from "../workspaces/crabbox-runtime.js";
 import { assertCrabboxAvailable } from "../workspaces/crabbox-doctor.js";
 import { GitWorktreeManager } from "../workspaces/worktree-manager.js";
 import { SshExecutor } from "../deploy/ssh-executor.js";
@@ -130,7 +130,9 @@ export async function startWorkers(): Promise<void> {
     ),
   );
   const root = process.env.WORKTREE_ROOT ?? "/tmp/software-factory-worktrees";
-  const workspace = new CrabboxWorkspaceProvider(officialCrabboxRuntime);
+  const workspace = new CrabboxWorkspaceProvider(createCrabboxRuntime(officialCrabboxCommandRunner, {
+    localContainerImage: process.env.CRABBOX_LOCAL_CONTAINER_IMAGE,
+  }));
   const crabbox = createCrabboxActivityRuntime(workspace);
   const repository = createRepositoryActivities({
     git: { prepare: (target) => prepareRepository(target, github) },

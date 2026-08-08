@@ -3,10 +3,10 @@ import { createCrabboxRuntime, type CrabboxCommandRunner } from "../../src/works
 
 describe("Crabbox runtime", () => {
   it("warms, runs, and stops a local lease", async () => {
-    const calls: Array<{ file: string; args: string[] }> = [];
+    const calls: Array<{ file: string; args: string[]; options?: { cwd?: string } }> = [];
     const runner: CrabboxCommandRunner = {
-      run: async (file, args) => {
-        calls.push({ file, args });
+      run: async (file, args, options) => {
+        calls.push({ file, args, options });
         return { exitCode: 0, stdout: "ok", stderr: "" };
       },
     };
@@ -17,8 +17,16 @@ describe("Crabbox runtime", () => {
     await lease.stop();
     await lease.stop();
 
-    expect(calls[0]).toMatchObject({ file: "crabbox", args: ["warmup", "--slug", expect.stringMatching(/^factory-worktree-/), "--keep"] });
-    expect(calls[1]).toMatchObject({ file: "crabbox", args: ["run", "--id", calls[0].args[2], "--", "npm", "test", "--", "--run"] });
+    expect(calls[0]).toMatchObject({
+      file: "crabbox",
+      args: ["warmup", "--slug", expect.stringMatching(/^factory-worktree-/), "--keep"],
+      options: { cwd: "/worktree" },
+    });
+    expect(calls[1]).toMatchObject({
+      file: "crabbox",
+      args: ["run", "--id", calls[0].args[2], "--", "npm", "test", "--", "--run"],
+      options: { cwd: "/worktree" },
+    });
     expect(calls[2]).toMatchObject({ file: "crabbox", args: ["stop", calls[0].args[2]] });
   });
 
@@ -35,5 +43,26 @@ describe("Crabbox runtime", () => {
     await lease.copyBack([{ from: "/workspace/result.json", to: "/worktree/result.json" }]);
 
     expect(calls.at(-1)).toEqual(["cp", "--id", calls[0][2], "/workspace/result.json", "/worktree/result.json"]);
+  });
+
+  it("passes the configured Node-capable local-container image to warmup", async () => {
+    const calls: string[][] = [];
+    const runtime = createCrabboxRuntime({
+      run: async (_file, args) => {
+        calls.push(args);
+        return { exitCode: 0, stdout: "", stderr: "" };
+      },
+    }, { bin: "crabbox", slugPrefix: "factory", localContainerImage: "software-factory-crabbox:node24" });
+
+    await runtime.warm({ path: "/worktree", network: "restricted" });
+
+    expect(calls[0]).toEqual([
+      "warmup",
+      "--local-container-image",
+      "software-factory-crabbox:node24",
+      "--slug",
+      expect.stringMatching(/^factory-worktree-/),
+      "--keep",
+    ]);
   });
 });
