@@ -149,4 +149,38 @@ describe("github integration routes", () => {
       });
     });
   });
+
+  it("allows local sample repositories when GitHub integration is configured", async () => {
+    const app = createApiApp({
+      executions: fakeExecutions(),
+      apiToken: "secret",
+      github: githubService(),
+      githubWebhookSecret: "whsec",
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      const server = app.listen(0, () => {
+        const address = server.address();
+        if (!address || typeof address === "string") {
+          reject(new Error("server did not bind"));
+          return;
+        }
+        fetch(`http://127.0.0.1:${address.port}/executions`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer secret",
+          },
+          body: JSON.stringify({
+            repository: "/tmp/software-factory-sample-task",
+            title: "Sample task",
+            description: "Run the sample repository task",
+          }),
+        }).then(async (response) => {
+          expect(response.status).toBe(201);
+          server.close((error) => error ? reject(error) : resolve());
+        }).catch(reject);
+      });
+    });
+  });
 });

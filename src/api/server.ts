@@ -111,7 +111,7 @@ async function validateTask(
 > {
   try {
     const normalized = normalizeTaskIntake(body as TaskIntakeInput);
-    if (github) {
+    if (github && normalized.repository.startsWith("https://")) {
       const status = await github.getStatus();
       if (!status.connected) return { status: 409, error: "GitHub App is not connected" };
       const fullName = repositoryFullName(normalized.repository);
