@@ -80,7 +80,33 @@ export interface RunEvent {
 }
 
 export interface CreateTaskInput {
+  repository: string;
   prompt: string;
+}
+
+export interface GitHubStatus {
+  schemaVersion: "github-status.v1";
+  configured: boolean;
+  connected: boolean;
+  installations: Array<{
+    installationId: number;
+    accountLogin: string;
+    accountType: string;
+    suspended: boolean;
+  }>;
+}
+
+export interface GitHubRepository {
+  fullName: string;
+  cloneUrl: string;
+  private: boolean;
+  defaultBranch: string;
+}
+
+export interface GitHubRepositoriesResponse {
+  schemaVersion: "github-repos.v1";
+  items: GitHubRepository[];
+  hasMore: boolean;
 }
 
 export interface CreateTaskResponse {
@@ -107,4 +133,73 @@ export interface NodeVisualState {
   status: NodeAttemptStatus;
   attemptCount: number;
   isCurrent: boolean;
+}
+
+export interface EvidenceItemView {
+  schemaVersion: "evidence-item-view.v1";
+  id: string;
+  kind: string;
+  mediaType: string;
+  sha256: string;
+  producer: { type: string; id: string; version: string };
+  subject: Record<string, string>;
+  createdAt: string;
+  redaction: "none" | "secrets" | "pii";
+  signedUrl?: string;
+}
+
+export interface EvidenceContentView {
+  schemaVersion: "evidence-content.v1";
+  itemId: string;
+  sha256: string;
+  mediaType: string;
+  redaction: "none" | "secrets" | "pii";
+  note?: string;
+}
+
+export interface GateDecisionView {
+  schemaVersion: "gate-decision-view.v1";
+  gateId: string;
+  decision: string;
+  policyVersion: string;
+  reasons: unknown;
+  evidenceRefs: string[];
+  decidedAt: string;
+}
+
+export interface ScenarioRunView {
+  schemaVersion: "scenario-run-view.v1";
+  scenarioId: string;
+  attemptId: string;
+  status: string;
+  satisfaction?: number;
+  startedAt: string;
+  completedAt?: string;
+}
+
+export interface ProbeRunView {
+  schemaVersion: "probe-run-view.v1";
+  probeId: string;
+  attemptId: string;
+  status: string;
+  recordedAt: string;
+  summary: unknown;
+}
+
+export interface DeploymentView {
+  schemaVersion: "deployment-view.v1";
+  profile: string;
+  digest: string;
+  status: string;
+  updatedAt: string;
+  observations: Array<{
+    observationId: string;
+    status: string;
+    observedAt: string;
+  }>;
+}
+
+export interface DeploymentList {
+  schemaVersion: "deployment-list.v1";
+  items: DeploymentView[];
 }

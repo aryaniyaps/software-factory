@@ -11,4 +11,8 @@ describe("securityGate", () => {
   it("passes ordinary source files", async () => {
     await expect(securityGate({ files: ["src/index.ts", "package.json"] })).resolves.toEqual({ passed: true, findings: [] });
   });
+
+  it("allows .env.example template files", async () => {
+    await expect(securityGate({ files: [".env.example", "README.md"] })).resolves.toEqual({ passed: true, findings: [] });
+  });
 });

@@ -26,6 +26,7 @@ const requiredTables = [
   "factory_clarifications",
   "factory_claim_revisions",
   "a2a_tasks",
+  "github_installations",
 ];
 
 describe("migration smoke test", () => {
@@ -49,6 +50,7 @@ describe("migration smoke test", () => {
       "0001_supreme_pandemic.sql",
       "0002_bored_dark_beast.sql",
       "0003_greedy_kate_bishop.sql",
+      "0004_github_installations.sql",
     ].map((file) => readFile(new URL(`../../drizzle/${file}`, import.meta.url), "utf8")))).join("\n");
     for (const table of requiredTables) {
       expect(schema).toContain(table);

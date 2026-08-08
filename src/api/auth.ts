@@ -3,10 +3,15 @@ import type { Middleware } from "koa";
 export interface ApiAuthConfig {
   readonly token?: string;
   readonly requireAuthForReads?: boolean;
+  readonly publicPaths?: readonly string[];
 }
 
 export function createAuthMiddleware(config: ApiAuthConfig): Middleware {
   return async (ctx, next) => {
+    if (config.publicPaths?.includes(ctx.path)) {
+      await next();
+      return;
+    }
     if (!config.token) {
       await next();
       return;

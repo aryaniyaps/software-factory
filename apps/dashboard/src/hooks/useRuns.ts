@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import * as api from "../api/client";
+import { filterInboxRuns } from "../lib/inbox";
 import type { FactoryRunSummary, RunEvent, RunGraph } from "../types";
 import { usePolling } from "./usePolling";
+
+/** Poll interval for the needs-attention inbox (relaxed vs full run monitor). */
+export const INBOX_POLL_MS = 10000;
 
 export interface RunDetail {
   summary: FactoryRunSummary;
@@ -9,22 +13,22 @@ export interface RunDetail {
   events: RunEvent[];
 }
 
-export function useRunsList(intervalMs = 2000) {
+export function useRunsList(intervalMs = INBOX_POLL_MS, pinnedRunId?: string | null) {
   const [runs, setRuns] = useState<FactoryRunSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     try {
-      const page = await api.listRuns(50);
-      setRuns([...page.items]);
+      const page = await api.listRuns(100);
+      setRuns(filterInboxRuns(page.items, pinnedRunId));
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pinnedRunId]);
 
   usePolling(refresh, { intervalMs, enabled: true, pauseWhenHidden: true });
 

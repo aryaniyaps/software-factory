@@ -9,6 +9,8 @@ import { correlationToAgentMetadata } from "../../integrations/correlation.js";
 import type { FactoryActivities } from "./types.js";
 import { parseAgentOutput, type AgentOutput } from "../../contracts/nodes.js";
 import { parseNodeContext } from "../../contracts/conversation.js";
+import { Context } from "@temporalio/activity";
+import { startActivityHeartbeat } from "./activity-heartbeat.js";
 
 export interface AgentMemoryHooks {
   buildContext(input: { run: unknown; role: string; value: unknown; mentalModels: readonly string[]; operations: readonly ("recall" | "reflect" | "retain")[] }): Promise<string>;
@@ -77,6 +79,8 @@ export function createAgentActivities(dependencies: {
 }): Pick<FactoryActivities, "runAgent"> {
   return {
     async runAgent(input) {
+      const stopHeartbeat = startActivityHeartbeat();
+      try {
       if (
         input.input
         && typeof input.input === "object"
@@ -123,13 +127,20 @@ export function createAgentActivities(dependencies: {
       const systemPrompt = promptForRole(input.role, mode, input.worktree.path);
       const startedAt = new Date().toISOString();
       const result = await dependencies.run({
-        role: input.role,
-        prompt,
-        systemPrompt,
-        cwd: input.worktree.path,
-        tools: toolsForRole(input.role),
-        metadata,
-      });
+          role: input.role,
+          prompt,
+          systemPrompt,
+          cwd: input.worktree.path,
+          tools: toolsForRole(input.role),
+          metadata,
+          onHeartbeat: () => {
+            try {
+              Context.current().heartbeat(input.role);
+            } catch {
+              // Activity may already be cancelled/timed out.
+            }
+          },
+        });
       const completedAt = new Date().toISOString();
       if (dependencies.sessions) {
         const nodeAttemptId = input.run.attemptId ?? `${input.role}:1`;
@@ -157,6 +168,9 @@ export function createAgentActivities(dependencies: {
         });
       }
       return { sessionId: result.sessionId, output: parseAgentOutput(result.text) };
+      } finally {
+        stopHeartbeat();
+      }
     },
   };
 }

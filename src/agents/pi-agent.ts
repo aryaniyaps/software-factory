@@ -19,6 +19,7 @@ export class PiAgentRunner implements AgentRunner {
     tools: string[];
     metadata: Record<string, string>;
     systemPrompt?: string;
+    onHeartbeat?: () => void;
   }): Promise<{ text: string; sessionId: string; toolCalls: AgentToolCallRecord[] }> {
     const harness = harnessForRole(input.role);
     const allowedTools = toolsForRole(input.role);
@@ -57,8 +58,11 @@ export class PiAgentRunner implements AgentRunner {
     const activeToolCalls = new Map<string, Omit<AgentToolCallRecord, "status" | "output" | "completedAt">>();
     const toolCalls: AgentToolCallRecord[] = [];
     session.subscribe((event) => {
-      if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") text += event.assistantMessageEvent.delta;
+      if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
+        text += event.assistantMessageEvent.delta;
+      }
       if (event.type === "tool_execution_start") {
+        input.onHeartbeat?.();
         activeToolCalls.set(event.toolCallId, {
           callId: event.toolCallId,
           toolName: event.toolName,
@@ -67,6 +71,7 @@ export class PiAgentRunner implements AgentRunner {
         });
       }
       if (event.type === "tool_execution_end") {
+        input.onHeartbeat?.();
         const started = activeToolCalls.get(event.toolCallId);
         toolCalls.push({
           callId: event.toolCallId,

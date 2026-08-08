@@ -91,6 +91,7 @@ cp .env.example .env
 # 4. Install, migrate, build
 npm install
 npm run db:migrate
+npm run temporal:search-attributes   # after compose:up — registers factory search attributes
 npm run build
 
 # 5. Bootstrap Pi role resources (needs writable PI_RESOURCE_ROOT)
@@ -147,7 +148,7 @@ Resolution lives in [`src/agents/model-resolver.ts`](src/agents/model-resolver.t
 
 ## Local dashboard
 
-A Vite + React dashboard lives at `apps/dashboard/` for local run monitoring. Task intake is one free-form prompt; title, description, acceptance context, and repository defaults are inferred. The dashboard shows the unified discovery-plan node and lets an operator answer clarification requests before the workflow resumes.
+A Vite + React dashboard lives at `apps/dashboard/` for local run monitoring. Connect a GitHub App installation, explicitly select a repository from the connected account, then describe the task in one free-form prompt. Title and acceptance context are inferred. The dashboard shows the unified discovery-plan node and lets an operator answer clarification requests before the workflow resumes.
 
 ```bash
 # Terminal 1 — infrastructure + API
@@ -186,13 +187,15 @@ versioned evidence so retries and replanning remain deterministic.
 ```bash
 curl -sS -X POST http://127.0.0.1:8787/tasks \
   -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <token>' \
   -d '{
-    "repository": "https://github.com/org/repo.git",
-    "title": "Add feature X",
-    "description": "Concrete acceptance criteria and scope for the change."
+    "repository": "org/repo",
+    "prompt": "Add feature X with concrete acceptance criteria and scope for the change."
   }'
 # → { "id": "<runUuid>" }
 ```
+
+Repository must be explicitly provided as `owner/repo` or an HTTPS clone URL accessible to the connected GitHub App. Prompt-only task creation is no longer supported.
 
 If `FACTORY_API_TOKEN` is set, include `Authorization: Bearer <token>` on write routes.
 

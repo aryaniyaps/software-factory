@@ -1,18 +1,43 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createBuildActivities } from "../../src/temporal/activities/build.js";
 import { buildProvenance, signProvenance } from "../../src/security/provenance.js";
 
 describe("build activities", () => {
   it("runs checks inside Crabbox and bounds output", async () => {
+    const worktreePath = await mkdtemp(join(tmpdir(), "sf-checks-"));
+    await writeFile(join(worktreePath, "package.json"), JSON.stringify({ name: "app", scripts: { test: "vitest run" } }));
     const calls: string[] = [];
     const activities = createBuildActivities({
       runtime: { createForWorktree: async () => ({ exec: async () => { calls.push("exec"); return { exitCode: 0, stdout: "123456", stderr: "" }; }, close: async () => { calls.push("close"); } }) },
       builder: { build: async () => signedArtifact(`registry/app@sha256:${"a".repeat(64)}`) },
       maxOutputBytes: 4,
     });
-    const result = await activities.runChecks({ run: { runId: "run", taskId: "task", repository: "/repo", baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "crabbox" }, worktree: { path: "/worktree", branch: "factory/run/task/1" } });
+    const result = await activities.runChecks({ run: { runId: "run", taskId: "task", repository: "/repo", baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "crabbox" }, worktree: { path: worktreePath, branch: "factory/run/task/1" } });
     expect(result).toMatchObject({ passed: true, output: "1234" });
     expect(calls).toEqual(["exec", "close"]);
+  });
+
+  it("runs Go checks on the host when hostExec is configured", async () => {
+    const worktreePath = await mkdtemp(join(tmpdir(), "sf-go-checks-"));
+    await writeFile(join(worktreePath, "go.mod"), "module example.com/test\n\ngo 1.22\n");
+    const activities = createBuildActivities({
+      runtime: {
+        createForWorktree: async () => ({
+          exec: async () => ({ exitCode: 1, stdout: "", stderr: "crabbox should not run go test" }),
+          close: async () => {},
+        }),
+      },
+      hostExec: async () => ({ exitCode: 0, stdout: "ok", stderr: "" }),
+      builder: { build: async () => signedArtifact(`registry/app@sha256:${"a".repeat(64)}`) },
+    });
+    const result = await activities.runChecks({
+      run: { runId: "run", taskId: "task", repository: "/repo", baseBranch: "main", workflow: "feature", deploymentProfile: "staging", sandboxProfile: "crabbox" },
+      worktree: { path: worktreePath, branch: "factory/run/task/1" },
+    });
+    expect(result).toMatchObject({ passed: true, output: "ok\n" });
   });
 
   it("rejects mutable or malformed artifact references", async () => {

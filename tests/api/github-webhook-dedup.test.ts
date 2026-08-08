@@ -11,7 +11,16 @@ describe("GitHub webhook deduplication", () => {
     await new Promise<void>((resolve) => server.listen(0, resolve));
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("server did not bind");
-    const request = () => fetch(`http://127.0.0.1:${address.port}/webhooks/github`, { method: "POST", headers: { "x-hub-signature-256": signature, "x-github-delivery": "same-delivery" }, body });
+    const request = () => fetch(`http://127.0.0.1:${address.port}/webhooks/github`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-hub-signature-256": signature,
+        "x-github-delivery": "same-delivery",
+        "x-github-event": "installation",
+      },
+      body,
+    });
     await request();
     await request();
     await new Promise((resolve) => setTimeout(resolve, 0));

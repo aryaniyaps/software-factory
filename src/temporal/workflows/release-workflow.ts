@@ -44,7 +44,42 @@ export async function releaseWorkflow(input: ReleaseWorkflowInput): Promise<Rele
   const preview = await deployActivity.deployPreview({ run: input.run, artifact: input.artifact, deploymentId });
   const previousDigest = preview.previousDigest;
   if (!previousDigest) {
-    return { status: "failed", releaseState, deploymentId, digest, observationReasons: ["missing_previous_digest"] };
+    releaseState = advanceState(releaseState, "preview_deployed");
+    const verification = await deployActivity.verifyRelease({
+      run: input.run,
+      artifact: input.artifact,
+      previewUrl: preview.previewUrl,
+      deploymentId,
+    });
+    if (!verification.passed) {
+      return { status: "failed", releaseState, deploymentId, digest, observationReasons: verification.reasons };
+    }
+    releaseState = advanceState(releaseState, "release_verified");
+    await deployActivity.deployCanary({
+      run: input.run,
+      artifact: input.artifact,
+      deploymentId,
+      percentage: 100,
+      stageIndex: 0,
+    });
+    releaseState = advanceState(releaseState, "canary_deployed");
+    releaseState = advanceState(releaseState, "observation_started");
+    const signals = await deployActivity.observeDeployment({
+      run: input.run,
+      deploymentId,
+      digest,
+      healthUrl: preview.healthUrl,
+    });
+    const observation = evaluateObservation({
+      policy: DEFAULT_OBSERVATION_POLICY,
+      technical: signals.technical,
+      semantic: signals.semantic,
+    });
+    if (observation.decision !== "pass") {
+      return { status: "failed", releaseState, deploymentId, digest, observationReasons: observation.reasons };
+    }
+    releaseState = advanceState(releaseState, "promotion_completed");
+    return { status: "promoted", releaseState, deploymentId, digest };
   }
   releaseState = advanceState(releaseState, "preview_deployed");
 

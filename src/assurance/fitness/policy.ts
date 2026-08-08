@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import {
   type AdapterCommandConfig,
@@ -24,10 +24,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function asStringArray(value: unknown, field: string): string[] {
-  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+  if (!Array.isArray(value)) {
     throw new Error(`Invalid fitness policy: ${field} must be a string array`);
   }
-  return value;
+  return value.map((entry, index) => {
+    if (typeof entry === "string") return entry;
+    if (entry === null || entry === undefined) return "";
+    if (typeof entry === "boolean" || typeof entry === "number") return String(entry);
+    throw new Error(`Invalid fitness policy: ${field}[${index}] must be a string`);
+  });
 }
 
 function asCapabilities(value: unknown): FitnessCapability[] {
@@ -88,7 +93,8 @@ export async function loadFitnessPolicy(path: string): Promise<FitnessPolicy> {
 }
 
 export function defaultFitnessPolicyPath(): string {
-  return fileURLToPath(new URL("../../../factory/fitness/default.yaml", import.meta.url));
+  const factoryRoot = process.env.FACTORY_REPO_ROOT ?? process.cwd();
+  return join(factoryRoot, "factory/fitness/default.yaml");
 }
 
 export const maintainabilityDimensions = MAINTAINABILITY_DIMENSIONS;

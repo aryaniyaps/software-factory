@@ -9,7 +9,7 @@ import { runMigrations } from "../db/migrate.js";
 import { HindsightClient } from "@vectorize-io/hindsight-client";
 import { assertHindsightCompatibility, HindsightMemory } from "../integrations/hindsight.js";
 import { memoryBankFromEnv, memoryTags, resolveProjectBank, validateHindsightTemplate } from "../integrations/hindsight-config.js";
-import { assembleAgentMemory, retainableAgentOutcome } from "../agents/memory.js";
+import { assembleAgentMemory, memoryQueryFromAgentValue, retainableAgentOutcome } from "../agents/memory.js";
 import { createFactoryProjection } from "../db/factory-projection.js";
 import { createAgentSessionLedger } from "../db/agent-session-ledger.js";
 import { createFilesystemObjectStore } from "../evidence/object-store.js";
@@ -27,13 +27,17 @@ import { createAgentActivities } from "./activities/agent.js";
 import { createProjectionActivities } from "./activities/projection.js";
 import { createProductionArtifactBuilder } from "../security/production-builder.js";
 import { createBuildActivities } from "./activities/build.js";
-import { createDeployActivities, type DeploymentTarget } from "./activities/deploy.js";
+import { createDeployActivities, createLocalDeployActivities, type DeploymentTarget } from "./activities/deploy.js";
 import type { FactoryWorkflowInput } from "./client.js";
 import { createProductionWorkers } from "./worker-main.js";
 import { instrumentActivities } from "../telemetry/bootstrap.js";
 import { createVerifierActivities } from "./activities/verifier-impl.js";
 import { createHealthActivities } from "./activities/health.js";
 import { createMetaFactoryActivities } from "./activities/meta-factory.js";
+import { createGitHubInstallationStore } from "../db/github-installation-store.js";
+import { createGitHubAppService, loadGitHubAppConfig, repositoryFullNameFromCloneUrl } from "../integrations/github-app.js";
+import type { GitHubAppService } from "../integrations/github-app.js";
+import { startActivityHeartbeat } from "./activities/activity-heartbeat.js";
 
 const execFile = promisify(nodeExecFile);
 
@@ -46,7 +50,36 @@ export function deploymentTargetFromEnv(env: Environment = process.env): Deploym
   return { host: env.FACTORY_DEPLOY_HOST, healthUrl: env.FACTORY_HEALTH_URL, previousDigest: env.FACTORY_PREVIOUS_DIGEST };
 }
 
-async function prepareRepository(repository: string): Promise<{ repository: string; revision: string }> {
+export function authenticatedGitHubCloneUrl(repository: string, token: string): string {
+  const url = new URL(repository.endsWith(".git") ? repository : `${repository}.git`);
+  url.username = "x-access-token";
+  url.password = token;
+  return url.toString();
+}
+
+function normalizeGitRemoteUrl(url: string): string {
+  try {
+    const parsed = new URL(url.endsWith(".git") ? url : `${url}.git`);
+    parsed.username = "";
+    parsed.password = "";
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
+function sanitizeGitCommandError(error: unknown, token?: string): Error {
+  if (!(error instanceof Error)) return new Error(String(error));
+  let message = error.message;
+  if (token) message = message.replaceAll(token, "[redacted]");
+  message = message.replace(/x-access-token:[^@\s]+@/g, "x-access-token:[redacted]@");
+  return new Error(message);
+}
+
+async function prepareRepository(
+  repository: string,
+  github?: GitHubAppService,
+): Promise<{ repository: string; revision: string }> {
   const root = process.env.REPOSITORY_CACHE_ROOT ?? "/tmp/software-factory-repositories";
   let path = repository;
   if (repository.startsWith("https://")) {
@@ -54,15 +87,30 @@ async function prepareRepository(repository: string): Promise<{ repository: stri
     const name = repository.split("/").pop()?.replace(/\.git$/, "") || "repository";
     const key = createHash("sha256").update(repository).digest("hex").slice(0, 16);
     path = join(root, `${name}-${key}`);
+    const fullName = repositoryFullNameFromCloneUrl(repository);
+    const token = fullName && github ? await github.installationTokenForRepo(fullName) : undefined;
+    if (fullName && github && !token) {
+      throw new Error(`repository is not accessible via the connected GitHub App: ${fullName}`);
+    }
+    const remoteUrl = token ? authenticatedGitHubCloneUrl(repository, token) : repository;
     try {
       const { stdout: origin } = await execFile("git", ["-C", path, "remote", "get-url", "origin"], {
         timeout: 10_000,
       });
-      if (origin.trim() !== repository) throw new Error("repository cache origin mismatch");
-      await execFile("git", ["-C", path, "fetch", "--prune"]);
+      if (normalizeGitRemoteUrl(origin.trim()) !== normalizeGitRemoteUrl(repository)) {
+        throw new Error("repository cache origin mismatch");
+      }
+      await execFile("git", ["-C", path, "remote", "set-url", "origin", remoteUrl], { timeout: 10_000 });
+      await execFile("git", ["-C", path, "fetch", "--prune"], { timeout: 120_000 });
+      await execFile("git", ["-C", path, "remote", "set-url", "origin", repository], { timeout: 10_000 });
     } catch (error) {
       if (error instanceof Error && error.message === "repository cache origin mismatch") throw error;
-      await execFile("git", ["clone", "--depth", "1", repository, path], { timeout: 120_000 });
+      try {
+        await execFile("git", ["clone", "--depth", "1", remoteUrl, path], { timeout: 120_000 });
+        await execFile("git", ["-C", path, "remote", "set-url", "origin", repository], { timeout: 10_000 });
+      } catch (cloneError) {
+        throw sanitizeGitCommandError(cloneError, token);
+      }
     }
   }
   const { stdout } = await execFile("git", ["-C", path, "rev-parse", "HEAD"]);
@@ -74,6 +122,10 @@ export async function startWorkers(): Promise<void> {
   await runMigrations();
   const pool = createPool();
   const db = createDatabase(pool);
+  const githubConfig = await loadGitHubAppConfig();
+  const githubInstallations = createGitHubInstallationStore(db);
+  const github = githubConfig ? createGitHubAppService(githubConfig, githubInstallations) : undefined;
+  if (github) await github.bootstrapFromEnv();
   const projection = createFactoryProjection(db);
   const sessionLedger = createAgentSessionLedger(
     db,
@@ -84,7 +136,10 @@ export async function startWorkers(): Promise<void> {
   const root = process.env.WORKTREE_ROOT ?? "/tmp/software-factory-worktrees";
   const workspace = new CrabboxWorkspaceProvider(officialCrabboxRuntime);
   const crabbox = createCrabboxActivityRuntime(workspace);
-  const repository = createRepositoryActivities({ git: { prepare: prepareRepository }, worktrees: new GitWorktreeManager(root) });
+  const repository = createRepositoryActivities({
+    git: { prepare: (target) => prepareRepository(target, github) },
+    worktrees: new GitWorktreeManager(root),
+  });
   const pi = new PiAgentRunner();
   const hindsightClient = new HindsightClient({
     baseUrl: process.env.HINDSIGHT_BASE_URL ?? "http://localhost:8888",
@@ -104,7 +159,14 @@ export async function startWorkers(): Promise<void> {
         const context = { factoryRunId: input.runId, ticketId: input.taskId, attemptId: input.attemptId ?? "1", phaseId: role, agentRole: role, organization: input.organization, project: input.project, repository: input.repository };
         const tags = memoryTags(context);
         const bank = resolveProjectBank(input);
-        return assembleAgentMemory(memory, { bank, role, query: JSON.stringify(value), mentalModels, tags, operations });
+        return assembleAgentMemory(memory, {
+          bank,
+          role,
+          query: memoryQueryFromAgentValue(role, value),
+          mentalModels,
+          tags,
+          operations,
+        });
       },
       async retainOutcome({ run, role, output, operations }) {
         if (!operations.includes("retain")) return;
@@ -118,17 +180,37 @@ export async function startWorkers(): Promise<void> {
   if (!image) throw new Error("FACTORY_IMAGE is required");
   const build = createBuildActivities({
     runtime: crabbox,
+    hostExec: async (command, args, options) => {
+      try {
+        const result = await execFile(command, args, {
+          cwd: options.cwd,
+          timeout: options.timeoutMs,
+          maxBuffer: options.maxOutputBytes ?? 4 * 1024 * 1024,
+        });
+        return { exitCode: 0, stdout: result.stdout, stderr: result.stderr };
+      } catch (error) {
+        const execError = error as NodeJS.ErrnoException & { stdout?: string; stderr?: string; code?: number };
+        return {
+          exitCode: typeof execError.code === "number" ? execError.code : 1,
+          stdout: execError.stdout ?? "",
+          stderr: execError.stderr ?? (execError.message ?? String(error)),
+        };
+      }
+    },
     builder: createProductionArtifactBuilder({
       image,
       signingKey: process.env.FACTORY_PROVENANCE_SIGNING_KEY ?? "factory-dev-signing-key",
     }),
     configuredDigest: process.env.FACTORY_ARTIFACT_DIGEST,
+    image,
   });
-  const deploy = createDeployActivities({
-    targets: { [process.env.FACTORY_DEPLOYMENT_PROFILE ?? "staging"]: deploymentTargetFromEnv() },
-    ssh: new SshExecutor({ hosts: [process.env.FACTORY_DEPLOY_HOST ?? ""] }),
-    health: new HealthChecker(),
-  });
+  const deploy = !process.env.FACTORY_PREVIOUS_DIGEST
+    ? createLocalDeployActivities({ healthUrl: process.env.FACTORY_HEALTH_URL ?? "http://127.0.0.1:9999/health" })
+    : createDeployActivities({
+      targets: { [process.env.FACTORY_DEPLOYMENT_PROFILE ?? "staging"]: deploymentTargetFromEnv() },
+      ssh: new SshExecutor({ hosts: [process.env.FACTORY_DEPLOY_HOST ?? ""] }),
+      health: new HealthChecker(),
+    });
   const health = new HealthChecker();
   const projectionActivities = createProjectionActivities(projection);
   const hiddenScenariosRoot = process.env.FACTORY_HIDDEN_SCENARIOS_ROOT
@@ -153,14 +235,14 @@ export async function startWorkers(): Promise<void> {
     ...deploy,
     ...projectionActivities,
     async securityScan(input: { worktree: { path: string } }) {
-      const lease = await workspace.create({ path: input.worktree.path, network: "none" });
+      const stopHeartbeat = startActivityHeartbeat();
       try {
-        const result = await workspace.exec(lease.id, "git", ["ls-files"], { cwd: "/workspace" });
-        return result.exitCode === 0
-          ? securityGate({ files: result.stdout.split("\\n").filter(Boolean) })
-          : { passed: false, findings: [result.stderr] };
+        const result = await execFile("git", ["-C", input.worktree.path, "ls-files"], { timeout: 120_000 });
+        return result.stdout
+          ? securityGate({ files: result.stdout.split("\n").filter(Boolean) })
+          : { passed: true, findings: [] };
       } finally {
-        await workspace.destroy(lease.id);
+        stopHeartbeat();
       }
     },
     async healthCheck(input: { url: string }) {

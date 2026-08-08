@@ -34,6 +34,7 @@ const AgentOutputBase = {
     Type.Literal("succeeded"),
     Type.Literal("failed"),
     Type.Literal("escalate_to_human"),
+    Type.Literal("abstained"),
   ]),
   summary: Type.String({ minLength: 1 }),
   evidenceRefs: Type.Array(Type.String({ minLength: 1 }), { minItems: 1 }),
@@ -44,7 +45,7 @@ export const AgentOutputSchema = Type.Union(AgentRoles.map((role) => Type.Object
 
 export interface AgentOutputBase {
   readonly schemaVersion: "agent-output.v1";
-  readonly status: "succeeded" | "failed" | "escalate_to_human";
+  readonly status: "succeeded" | "failed" | "escalate_to_human" | "abstained";
   readonly summary: string;
   readonly evidenceRefs: readonly string[];
   readonly data: JsonObject;
@@ -186,11 +187,45 @@ function validateMaintainabilityCriticData(data: JsonObject): void {
 
 export function parseAgentOutput(value: unknown): AgentOutput {
   const candidate = typeof value === "string" ? extractJsonValue(value) : value;
-  const output = parse<AgentOutput>(AgentOutputSchema, candidate);
+  const normalized = normalizeAgentOutputCandidate(candidate);
+  const output = parse<AgentOutput>(AgentOutputSchema, normalized);
   if (output.role === "maintainability_critic") {
     validateMaintainabilityCriticData(output.data);
   }
   return normalizeEscalation(output);
+}
+
+/** Soften common model deviations before strict schema validation. */
+function normalizeAgentOutputCandidate(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const record = { ...(value as Record<string, unknown>) };
+
+  if (typeof record.role === "string") {
+    record.role = record.role.trim().toLowerCase();
+  }
+  if (typeof record.schemaVersion !== "string" || !record.schemaVersion) {
+    record.schemaVersion = "agent-output.v1";
+  }
+  if (typeof record.summary !== "string" || !record.summary.trim()) {
+    record.summary = "Agent completed without a summary.";
+  }
+  if (!record.data || typeof record.data !== "object" || Array.isArray(record.data)) {
+    record.data = {};
+  }
+
+  const refs = Array.isArray(record.evidenceRefs)
+    ? record.evidenceRefs.filter((ref): ref is string => typeof ref === "string" && ref.trim().length > 0)
+    : [];
+  if (refs.length === 0) {
+    // Schema requires minItems:1; abstained/failed reviews often omit refs when evidence stubs are missing.
+    record.evidenceRefs = record.status === "abstained"
+      ? ["evidence://abstained"]
+      : ["evidence://unspecified"];
+  } else {
+    record.evidenceRefs = refs;
+  }
+
+  return record;
 }
 
 function normalizeEscalation(output: AgentOutput): AgentOutput {

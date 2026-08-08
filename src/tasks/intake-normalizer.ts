@@ -14,10 +14,10 @@ export interface NormalizedTaskIntake {
   description: string;
 }
 
-export class RepositoryUnresolvedError extends Error {
+export class RepositoryRequiredError extends Error {
   constructor() {
-    super("repository could not be inferred; configure FACTORY_DEFAULT_REPOSITORY or include a repository URL");
-    this.name = "RepositoryUnresolvedError";
+    super("repository is required; select a connected GitHub repository");
+    this.name = "RepositoryRequiredError";
   }
 }
 
@@ -29,11 +29,8 @@ export function normalizeTaskIntake(
   if (!prompt) throw new Error("prompt is required");
   if (prompt.length > 100_000) throw new Error("prompt exceeds 100000 characters");
 
-  const repository = input.repository?.trim()
-    || repositoryFromPrompt(prompt)
-    || env.FACTORY_DEFAULT_REPOSITORY?.trim()
-    || env.FACTORY_REPO_ROOT?.trim();
-  if (!repository) throw new RepositoryUnresolvedError();
+  const repository = normalizeRepositoryRef(input.repository?.trim() ?? "");
+  if (!repository) throw new RepositoryRequiredError();
   assertSafeRepository(repository, env);
 
   const title = input.title?.trim() || inferTitle(prompt);
@@ -43,6 +40,32 @@ export function normalizeTaskIntake(
     title,
     description: input.description?.trim() || prompt,
   };
+}
+
+export function normalizeRepositoryRef(repository: string): string {
+  if (!repository) return "";
+  if (repository.startsWith("https://") || repository.startsWith("/")) {
+    return repository.endsWith(".git") || repository.startsWith("/")
+      ? repository
+      : `${repository}.git`;
+  }
+  const parts = repository.split("/").filter(Boolean);
+  if (parts.length !== 2) return "";
+  return `https://github.com/${parts[0]}/${parts[1]}.git`;
+}
+
+export function repositoryFullName(repository: string): string {
+  if (repository.includes("/") && !repository.startsWith("https://") && !repository.startsWith("/")) {
+    return repository;
+  }
+  try {
+    const url = new URL(repository.endsWith(".git") ? repository : `${repository}.git`);
+    const parts = url.pathname.replace(/^\//, "").replace(/\.git$/, "").split("/");
+    if (parts.length !== 2 || !parts[0] || !parts[1]) return repository;
+    return `${parts[0]}/${parts[1]}`;
+  } catch {
+    return repository;
+  }
 }
 
 function assertSafeRepository(
@@ -61,10 +84,6 @@ function assertSafeRepository(
   if (!allowedHosts.includes(url.hostname.toLowerCase())) {
     throw new Error(`repository host is not allowed: ${url.hostname}`);
   }
-}
-
-function repositoryFromPrompt(prompt: string): string | undefined {
-  return prompt.match(/https:\/\/[^\s)]+(?:\.git)?/i)?.[0];
 }
 
 function inferTitle(prompt: string): string {

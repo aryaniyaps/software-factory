@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ApplicationFailure } from "@temporalio/common";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
 import { describe, expect, it } from "vitest";
@@ -18,6 +19,7 @@ import {
   type FactoryWorkflowContinuationInput,
 } from "../../src/temporal/workflows/types.js";
 import { TASK_QUEUES } from "../../src/temporal/task-queues.js";
+import { registerFactorySearchAttributesWithConnection } from "../../src/temporal/search-attributes.js";
 
 const workflowsPath = join(fileURLToPath(new URL(".", import.meta.url)), "../../src/temporal/workflows");
 const temporalTimeoutMs = 60_000;
@@ -111,7 +113,6 @@ function createReleaseActivities(calls: string[], previousDigest: string) {
 function createActivities(options: MockOptions = {}) {
   const calls: string[] = [];
   const agentInvocations: AgentInvocation[] = [];
-  let scoutAttempts = 0;
   let criticCalls = 0;
   let implementCalls = 0;
   const checks = [...(options.checks ?? [{ passed: true, output: "ok" }])];
@@ -136,7 +137,7 @@ function createActivities(options: MockOptions = {}) {
         findings: options.securityPassed === false ? [".env"] : [],
       };
     },
-    runAgent: async ({ role, input }: { role: string; input?: unknown }) => {
+    runAgent: async ({ role, input, run }: { role: string; input?: unknown; run: { attemptId?: string } }) => {
       calls.push(`agent:${role}`);
       agentInvocations.push({ role, input });
       if (options.exhaustedBudget) {
@@ -172,8 +173,10 @@ function createActivities(options: MockOptions = {}) {
         };
       }
       if (options.transientScout && role === "scout") {
-        scoutAttempts += 1;
-        if (scoutAttempts === 1) throw new Error("transient timeout");
+        const attemptNumber = run.attemptId?.match(/^scout-(\d+)-/)?.[1];
+        if (attemptNumber === "1") {
+          throw ApplicationFailure.nonRetryable("transient timeout", "TRANSIENT");
+        }
       }
       if (role === "review" && options.reviewStatus) {
         return { sessionId: role, output: agentOutput(role, options.reviewStatus) };
@@ -286,6 +289,7 @@ async function runFactoryTest(
   },
 ) {
   const testEnv = await TestWorkflowEnvironment.createTimeSkipping();
+  await registerFactorySearchAttributesWithConnection(testEnv.connection, testEnv.namespace);
   const { activities, calls, agentInvocations } = createActivities(options);
   const scoped = queueScopedActivities(activities);
   const workers = await Promise.all(Object.values(TASK_QUEUES).map((taskQueue) =>
@@ -479,6 +483,7 @@ describe.sequential("factory workflow policy execution", () => {
 
   it("handles cancellation with cancelled status", async () => {
     const testEnv = await TestWorkflowEnvironment.createTimeSkipping();
+  await registerFactorySearchAttributesWithConnection(testEnv.connection, testEnv.namespace);
     const { activities, calls } = createActivities();
     const workers = await Promise.all(Object.values(TASK_QUEUES).map((taskQueue) =>
       Worker.create({

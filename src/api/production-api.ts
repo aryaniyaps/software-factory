@@ -20,6 +20,8 @@ export function createProductionApi(input: { store: ApiStore; workflowClient: Wo
         title: task.title,
         description: task.description,
         protocolVersion: 2,
+        skipBuildRelease:
+          process.env.FACTORY_SKIP_RELEASE === "true" || !process.env.FACTORY_PREVIOUS_DIGEST,
       };
       const intakeSpan = startTaskIntakeSpan(extractCorrelationFromRun(workflow));
       intakeSpan.setAttributes(correlationAttributes(extractCorrelationFromRun(workflow)));

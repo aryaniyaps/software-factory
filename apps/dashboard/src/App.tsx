@@ -4,21 +4,31 @@ import { CreateTaskForm } from "./components/CreateTaskForm";
 import { ClarificationPanel } from "./components/ClarificationPanel";
 import { OutcomeStrip } from "./components/OutcomeStrip";
 import { PipelineGraph } from "./components/PipelineGraph";
+import { RunDetailPanel } from "./components/RunDetailPanel";
 import { RunList } from "./components/RunList";
+import { useRunPanels } from "./hooks/useRunPanels";
 import { useRunDetail, useRunsList } from "./hooks/useRuns";
+import { temporalWorkflowUrl } from "./lib/temporal";
 import "./styles/tokens.css";
 import "./styles/app.css";
 import type { ClarificationRequest, RunEvent } from "./types";
 
 export function App() {
-  const { runs, error: runsError, loading: runsLoading, refresh: refreshRuns } = useRunsList(2000);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const { runs, error: runsError, loading: runsLoading, refresh: refreshRuns } = useRunsList(undefined, selectedRunId);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState(false);
 
   const { detail, error: detailError, loading: detailLoading, refresh: refreshDetail, isRunning } =
     useRunDetail(selectedRunId, 1500);
+
+  const {
+    data: panelData,
+    error: panelError,
+    loading: panelLoading,
+    refresh: refreshPanels,
+  } = useRunPanels(selectedRunId);
 
   useEffect(() => {
     setSelectedNode(null);
@@ -30,7 +40,7 @@ export function App() {
   }, []);
 
   const handleCreateTask = useCallback(
-    async (input: { prompt: string }) => {
+    async (input: { repository: string; prompt: string }) => {
       const { id } = await api.createTask(input);
       await refreshRuns();
       setSelectedRunId(id);
@@ -44,13 +54,13 @@ export function App() {
     setActionError(null);
     try {
       await api.cancelRun(selectedRunId);
-      await Promise.all([refreshRuns(), refreshDetail()]);
+      await Promise.all([refreshRuns(), refreshDetail(), refreshPanels()]);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     } finally {
       setActionPending(false);
     }
-  }, [selectedRunId, refreshRuns, refreshDetail]);
+  }, [selectedRunId, refreshRuns, refreshDetail, refreshPanels]);
 
   const handleRerun = useCallback(async () => {
     if (!selectedRunId || !selectedNode) return;
@@ -58,18 +68,21 @@ export function App() {
     setActionError(null);
     try {
       await api.rerunNode(selectedRunId, selectedNode);
-      await Promise.all([refreshRuns(), refreshDetail()]);
+      await Promise.all([refreshRuns(), refreshDetail(), refreshPanels()]);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     } finally {
       setActionPending(false);
     }
-  }, [selectedRunId, selectedNode, refreshRuns, refreshDetail]);
+  }, [selectedRunId, selectedNode, refreshRuns, refreshDetail, refreshPanels]);
 
-  const error = runsError ?? detailError ?? actionError;
+  const error = runsError ?? detailError ?? panelError ?? actionError;
   const pendingClarification = latestPendingClarification(detail?.events ?? []);
   const canCancel = Boolean(selectedRunId) && (isRunning || detail?.summary.status === "running");
   const canRerun = Boolean(selectedRunId && selectedNode);
+  const temporalUrl = selectedRunId
+    ? temporalWorkflowUrl(selectedRunId, detail?.summary.workflowId)
+    : null;
 
   const handleClarificationAnswer = useCallback(async (answer: string) => {
     if (!selectedRunId || !pendingClarification) return;
@@ -79,14 +92,19 @@ export function App() {
       answer,
       pendingClarification.stateRevision,
     );
-    await Promise.all([refreshRuns(), refreshDetail()]);
-  }, [selectedRunId, pendingClarification, refreshRuns, refreshDetail]);
+    await Promise.all([refreshRuns(), refreshDetail(), refreshPanels()]);
+  }, [selectedRunId, pendingClarification, refreshRuns, refreshDetail, refreshPanels]);
 
   return (
     <div className="app">
       <header className="app-header">
         <h1>Software Factory</h1>
-        <span className="subtitle">Operate — local pipeline monitor</span>
+        <span className="subtitle">Operate — approvals, evidence, and pipeline</span>
+        {temporalUrl && (
+          <a className="header-link" href={temporalUrl} target="_blank" rel="noopener noreferrer">
+            Open in Temporal
+          </a>
+        )}
       </header>
 
       {error && (
@@ -102,7 +120,7 @@ export function App() {
             <CreateTaskForm onSubmit={handleCreateTask} />
           </section>
           <section className="sidebar-section sidebar-section--runs">
-            <h2>Runs</h2>
+            <h2>Needs attention</h2>
             <RunList
               runs={runs}
               selectedRunId={selectedRunId}
@@ -134,6 +152,11 @@ export function App() {
               )}
             </div>
             {selectedNode && <span className="toolbar-hint">rerun target: {selectedNode}</span>}
+            {temporalUrl && (
+              <a className="btn btn-link" href={temporalUrl} target="_blank" rel="noopener noreferrer">
+                Open in Temporal
+              </a>
+            )}
             <button
               type="button"
               className="btn btn-danger"
@@ -161,6 +184,14 @@ export function App() {
             selectedNode={selectedNode}
             onSelectNode={setSelectedNode}
             loading={Boolean(selectedRunId) && detailLoading && !detail}
+          />
+
+          <RunDetailPanel
+            runId={selectedRunId}
+            data={panelData}
+            loading={panelLoading}
+            error={panelError}
+            empty={!selectedRunId}
           />
 
           {pendingClarification && (

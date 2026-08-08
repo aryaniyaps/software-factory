@@ -1,11 +1,19 @@
 import type {
   CreateTaskInput,
   CreateTaskResponse,
+  DeploymentList,
+  EvidenceContentView,
+  EvidenceItemView,
   FactoryRunSummary,
+  GateDecisionView,
+  GitHubRepositoriesResponse,
+  GitHubStatus,
   OperationResponse,
   PageResult,
+  ProbeRunView,
   RunEvent,
   RunGraph,
+  ScenarioRunView,
 } from "../types";
 
 const API_BASE = "/api";
@@ -53,6 +61,20 @@ export function createTask(input: CreateTaskInput): Promise<CreateTaskResponse> 
   });
 }
 
+export function getGitHubStatus(): Promise<GitHubStatus> {
+  return request<GitHubStatus>("/integrations/github/status");
+}
+
+export function githubInstallUrl(): string {
+  return `${API_BASE}/integrations/github/install`;
+}
+
+export function listGitHubRepos(search = "", page = 1): Promise<GitHubRepositoriesResponse> {
+  const params = new URLSearchParams({ page: String(page), perPage: "50" });
+  if (search.trim()) params.set("search", search.trim());
+  return request<GitHubRepositoriesResponse>(`/integrations/github/repos?${params.toString()}`);
+}
+
 export function listRuns(limit = 50): Promise<PageResult<FactoryRunSummary>> {
   return request<PageResult<FactoryRunSummary>>(`/factory/runs?limit=${limit}`);
 }
@@ -93,4 +115,52 @@ export function answerClarification(
       body: JSON.stringify({ answer, stateRevision }),
     },
   );
+}
+
+export function getRunGates(runId: string, limit = 100): Promise<PageResult<GateDecisionView>> {
+  return request<PageResult<GateDecisionView>>(`/factory/runs/${runId}/gates?limit=${limit}`);
+}
+
+export function listEvidence(runId: string, limit = 100): Promise<PageResult<EvidenceItemView>> {
+  return request<PageResult<EvidenceItemView>>(`/factory/runs/${runId}/evidence?limit=${limit}`);
+}
+
+export function getEvidenceContent(
+  runId: string,
+  itemId: string,
+  expires: string,
+  signature: string,
+): Promise<EvidenceContentView> {
+  const params = new URLSearchParams({ expires, signature });
+  return request<EvidenceContentView>(
+    `/factory/runs/${runId}/evidence/${itemId}/content?${params.toString()}`,
+  );
+}
+
+/** Fetch evidence content using the API-signed URL from an evidence item view. */
+export async function getEvidenceContentFromSignedUrl(signedUrl: string): Promise<EvidenceContentView> {
+  const url = new URL(signedUrl, window.location.origin);
+  const path = `/api${url.pathname}${url.search}`;
+  let response: Response;
+  try {
+    response = await fetch(path, { headers: { ...authHeaders() } });
+  } catch {
+    throw new Error("Factory API unreachable. Start the API (`npm run dev`) and retry.");
+  }
+  if (!response.ok) {
+    throw new Error(`Evidence content request failed (${response.status}).`);
+  }
+  return response.json() as Promise<EvidenceContentView>;
+}
+
+export function getRunScenarios(runId: string, limit = 100): Promise<PageResult<ScenarioRunView>> {
+  return request<PageResult<ScenarioRunView>>(`/factory/runs/${runId}/scenarios?limit=${limit}`);
+}
+
+export function getRunProbes(runId: string, limit = 100): Promise<PageResult<ProbeRunView>> {
+  return request<PageResult<ProbeRunView>>(`/factory/runs/${runId}/probes?limit=${limit}`);
+}
+
+export function getRunDeployments(runId: string): Promise<DeploymentList> {
+  return request<DeploymentList>(`/factory/runs/${runId}/deployments`);
 }

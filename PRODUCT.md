@@ -8,7 +8,7 @@ web
 
 ## Users
 
-Primary user: a factory operator running the self-hosted stack locally (or equivalent). They start tasks from one free-form prompt, review inferred task context, answer clarification requests, watch the live pipeline graph, cancel runs, rerun nodes, and decide what to do when a run succeeds, fails, rolls back, or is cancelled.
+Primary user: a factory operator running the self-hosted stack locally (or equivalent). They connect a GitHub App installation, explicitly select the target repository, describe the task in one free-form prompt, review inferred task context, answer clarification requests, watch the live pipeline graph, cancel runs, rerun nodes, and decide what to do when a run succeeds, fails, rolls back, or is cancelled.
 
 The dashboard and HTTP API serve that operating loop. End customers of software the factory builds are out of scope for this product surface.
 

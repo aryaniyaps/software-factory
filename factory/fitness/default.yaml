@@ -48,7 +48,7 @@ adapters:
       - tsc
       - --noEmit
       - --pretty
-      - false
+      - "false"
       - --extendedDiagnostics
   eslint:
     command: npx
@@ -83,4 +83,4 @@ adapters:
     args:
       - log
       - --numstat
-      - --pretty=format:
+      - "--pretty=format:"

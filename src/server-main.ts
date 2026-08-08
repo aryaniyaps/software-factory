@@ -11,6 +11,8 @@ import { loadFactoryConfig } from "./config.js";
 import { shutdownTelemetry } from "./telemetry/bootstrap.js";
 import { createA2AServer } from "./api/a2a-server.js";
 import { createA2ATaskStore } from "./db/a2a-task-store.js";
+import { createGitHubInstallationStore } from "./db/github-installation-store.js";
+import { createGitHubAppService, loadGitHubAppConfig } from "./integrations/github-app.js";
 
 export async function startServer(): Promise<void> {
   const config = loadFactoryConfig();
@@ -20,6 +22,10 @@ export async function startServer(): Promise<void> {
   await runMigrations();
   const pool = createPool();
   const db = createDatabase(pool);
+  const githubConfig = await loadGitHubAppConfig();
+  const githubInstallations = createGitHubInstallationStore(db);
+  const github = githubConfig ? createGitHubAppService(githubConfig, githubInstallations) : undefined;
+  if (github) await github.bootstrapFromEnv();
   const temporal = await createTemporalClient();
   const store = createFactoryRunStore(db);
   const evidenceService = createEvidenceService({
@@ -45,6 +51,8 @@ export async function startServer(): Promise<void> {
       baseUrl: config.publicBaseUrl,
     },
     apiToken: config.apiToken,
+    github,
+    githubWebhookSecret: githubConfig?.webhookSecret,
   });
   const port = Number(process.env.FACTORY_PORT ?? 8787);
   const a2aPort = Number(process.env.FACTORY_A2A_PORT ?? 8788);

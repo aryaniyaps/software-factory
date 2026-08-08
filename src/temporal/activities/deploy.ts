@@ -153,3 +153,41 @@ export function createDeployActivities(dependencies: {
     },
   };
 }
+
+export function createLocalDeployActivities(options: { healthUrl: string }): ReturnType<typeof createDeployActivities> {
+  const healthyObservation = {
+    technical: { healthOk: true, errorRate: 0.001, latencyP99Ms: 100 },
+    semantic: { productChecksPassed: true, sloBreaches: [] as string[] },
+  };
+  return {
+    async getDeploymentTarget() {
+      return { host: "local", healthUrl: options.healthUrl, previewUrl: options.healthUrl, previousDigest: undefined };
+    },
+    async deploy() {
+      return { deployed: true, healthUrl: options.healthUrl };
+    },
+    async deployPreview() {
+      return { previewUrl: options.healthUrl, healthUrl: options.healthUrl, previousDigest: undefined };
+    },
+    async deployCanary(input) {
+      return { deployed: true, percentage: input.percentage, stageIndex: input.stageIndex };
+    },
+    async verifyRelease() {
+      return { passed: true, reasons: [] };
+    },
+    async observeDeployment() {
+      return healthyObservation;
+    },
+    async rollbackDeployment(input) {
+      return {
+        rolledBack: true,
+        digest: input.targetDigest,
+        idempotent: false,
+        fence: createRollbackFence(input.deploymentId),
+      };
+    },
+    async healthCheck(input) {
+      return { healthy: true, url: input.url };
+    },
+  };
+}

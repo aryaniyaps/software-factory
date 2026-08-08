@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { parseScenarioDefinition, type ScenarioDefinition } from "./types.js";
@@ -25,6 +25,11 @@ export async function loadScenariosFromRoot(root: string, options: ScenarioLoade
     assertImplementerFilesystemAccess("implementer", root);
   }
   const indexPath = join(root, "index.json");
+  try {
+    await access(indexPath);
+  } catch {
+    return [];
+  }
   const index = JSON.parse(await readFile(indexPath, "utf8")) as { scenarios: string[] };
   const scenarios: ScenarioDefinition[] = [];
   for (const relative of index.scenarios) {

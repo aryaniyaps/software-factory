@@ -83,8 +83,12 @@ class FactoryAgentExecutor implements AgentExecutor {
         });
       }
     } else {
+      const repository = stringMetadata(context.task?.metadata, "repository");
       runId = await this.options.store.createTask(
-        normalizeTaskIntake({ prompt: textFromMessage(context.userMessage) }),
+        normalizeTaskIntake({
+          prompt: textFromMessage(context.userMessage),
+          repository,
+        }),
       );
       this.runByTask.set(context.taskId, runId);
     }
@@ -165,7 +169,7 @@ function factoryAgentCard(publicUrl: string): AgentCard {
       name: "Software engineering task",
       description: "Investigates, plans, implements, verifies, and releases a repository change.",
       tags: ["software-engineering", "code", "delivery"],
-      examples: ["Add an authenticated health endpoint and verify its behavior."],
+      examples: ["Add an authenticated health endpoint to acme/platform and verify its behavior."],
       inputModes: ["text/plain"],
       outputModes: ["text/plain", "application/json"],
       securityRequirements: [],

@@ -6,6 +6,7 @@ export interface AgentRunner {
     tools: string[];
     metadata: Record<string, string>;
     systemPrompt?: string;
+    onHeartbeat?: () => void;
   }): Promise<{
     text: string;
     sessionId: string;

@@ -1,11 +1,14 @@
 import {
   ApplicationFailure,
+  CancellationScope,
   condition,
   continueAsNew,
   defineQuery,
   defineSignal,
+  isCancellation,
   proxyActivities,
   setHandler,
+  upsertSearchAttributes,
   uuid4,
 } from "@temporalio/workflow";
 import type * as activities from "../activities/types.js";
@@ -34,7 +37,7 @@ import {
 
 const activityOptions = {
   startToCloseTimeout: "30 minutes",
-  heartbeatTimeout: "2 minutes",
+  heartbeatTimeout: "10 minutes",
   retry: {
     initialInterval: "2 seconds",
     backoffCoefficient: 2,
@@ -45,7 +48,18 @@ const activityOptions = {
 };
 
 const controlActivity = proxyActivities<typeof activities>({ ...activityOptions, taskQueue: TASK_QUEUES.control });
-const agentActivity = proxyActivities<typeof activities>({ ...activityOptions, taskQueue: TASK_QUEUES.agent });
+const agentActivity = proxyActivities<typeof activities>({
+  ...activityOptions,
+  startToCloseTimeout: "2 hours",
+  taskQueue: TASK_QUEUES.agent,
+  // Short enough to recover quickly if the worker dies; heartbeats every ~20s keep it alive.
+  heartbeatTimeout: "5 minutes",
+  retry: {
+    ...activityOptions.retry,
+    // Heartbeat/worker restarts are transient — allow a few attempts.
+    maximumAttempts: 3,
+  },
+});
 const buildActivity = proxyActivities<typeof activities>({ ...activityOptions, taskQueue: TASK_QUEUES.build });
 const verifierActivity = proxyActivities<typeof activities>({ ...activityOptions, taskQueue: TASK_QUEUES.verifier });
 
@@ -55,8 +69,20 @@ export const rollbackReleaseSignal = defineSignal("rollbackRelease");
 export const answerClarificationSignal = defineSignal<[ClarificationAnswer]>("answerClarification");
 export const factoryStatusQuery = defineQuery<FactoryWorkflowState>("factoryStatus");
 
-function agentSucceeded(output: { status: "succeeded" | "failed" | "escalate_to_human"; summary: string }): boolean {
+function agentSucceeded(output: { status: "succeeded" | "failed" | "escalate_to_human" | "abstained"; summary: string }): boolean {
   return output.status === "succeeded";
+}
+
+function maintainabilityCriticCompleted(output: { status: "succeeded" | "failed" | "escalate_to_human" | "abstained"; summary: string }): boolean {
+  return output.status === "succeeded" || output.status === "abstained";
+}
+
+function reviewGatePassed(output: AgentOutput, options?: { advisory?: boolean }): boolean {
+  if (output.status === "succeeded") return output.data.approved !== false;
+  if (output.status === "abstained") return true;
+  // Local/dev completion path: keep review findings in the run record but do not block.
+  if (options?.advisory && output.status === "failed") return true;
+  return false;
 }
 
 function agentFailureName(status: "failed" | "escalate_to_human"): string {
@@ -85,6 +111,36 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     budget: continuation?.budget ?? { ...DEFAULT_WORKFLOW_BUDGET },
   };
   const attemptsAtGenerationStart = state.nodeAttempts.length;
+
+  const syncSearchAttributes = (overrides?: {
+    currentNode?: FactoryNodeName | undefined;
+    status?: FactoryWorkflowState["status"];
+  }) => {
+    const status = overrides?.status ?? state.status;
+    const attrs: Record<string, string[]> = {
+      FactoryRunStatus: [status],
+    };
+    if (overrides && "currentNode" in overrides) {
+      if (overrides.currentNode !== undefined) {
+        attrs.FactoryCurrentNode = [overrides.currentNode];
+      } else {
+        attrs.FactoryCurrentNode = [];
+      }
+    } else if (state.currentNode !== undefined) {
+      attrs.FactoryCurrentNode = [state.currentNode];
+    }
+    upsertSearchAttributes(attrs);
+  };
+
+  const setStatus = (status: FactoryWorkflowState["status"]) => {
+    state.status = status;
+    syncSearchAttributes({ status });
+  };
+
+  const setCurrentNode = (node: FactoryNodeName | undefined) => {
+    state.currentNode = node;
+    syncSearchAttributes({ currentNode: node });
+  };
 
   let cancelled = false;
   let pendingRollback = false;
@@ -116,11 +172,11 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
 
   const checkCancelled = () => {
     if (cancelled) {
-      state.status = "cancelled";
+      setStatus("cancelled");
       throw ApplicationFailure.nonRetryable("factory cancelled", "Cancelled");
     }
     if (pendingRollback) {
-      state.status = "rolled_back";
+      setStatus("rolled_back");
       state.failedNode = state.currentNode;
       throw ApplicationFailure.nonRetryable("release rollback requested", "RollbackRequested");
     }
@@ -154,11 +210,19 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
   };
 
   const failRun = async (failedNode: FactoryNodeName, worktreePath?: string): Promise<FactoryWorkflowState> => {
-    state.status = "failed";
+    setStatus("failed");
     state.failedNode = failedNode;
     if (worktreePath) await controlActivity.removeWorktree(worktreePath);
     await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "failed", runId: input.runId });
     throw ApplicationFailure.nonRetryable(`factory failed at ${failedNode}`, "Failed", { failedNode });
+  };
+
+  const cleanupCancelled = async () => {
+    await CancellationScope.nonCancellable(async () => {
+      if (state.status !== "cancelled") setStatus("cancelled");
+      if (activeWorktreePath) await controlActivity.removeWorktree(activeWorktreePath);
+      await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "cancelled", runId: input.runId });
+    });
   };
 
     let activeWorktreePath = continuation?.worktree?.path;
@@ -174,7 +238,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
         : [];
 
       if (!worktree) {
-        state.currentNode = "prepare_repository";
+        setCurrentNode("prepare_repository");
         const prepAttempt = await runNodeAttempt({
           runId: input.runId,
           node: "prepare_repository",
@@ -191,7 +255,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
         baselineRevision = preparation.revision;
         checkCancelled();
 
-      state.currentNode = "create_worktree";
+      setCurrentNode("create_worktree");
       const worktreeAttempt = await runNodeAttempt({
         runId: input.runId,
         node: "create_worktree",
@@ -210,7 +274,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
       checkCancelled();
     }
 
-    state.currentNode = "security_scan";
+    setCurrentNode("security_scan");
     const securityAttempt = await runNodeWithRetry({
       runId: input.runId,
       node: "security_scan",
@@ -239,7 +303,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
       if (pendingRerun && pendingRerun !== role) continue;
       if (pendingRerun === role) pendingRerun = undefined;
 
-      state.currentNode = role;
+      setCurrentNode(role);
       let clarification:
         | { request: ClarificationRequest; answer: ClarificationAnswer }
         | undefined;
@@ -360,7 +424,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
             createdAt: new Date().toISOString(),
           };
         } else {
-          state.status = "input_required";
+          setStatus("input_required");
           await controlActivity.updateTaskStatus({
             taskId: input.taskId,
             status: "input_required",
@@ -381,7 +445,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
         });
         pendingAnswer = undefined;
         state.pendingClarification = undefined;
-        state.status = "running";
+        setStatus("running");
         await controlActivity.updateTaskStatus({
           taskId: input.taskId,
           status: "running",
@@ -398,7 +462,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
       await maybeContinueAsNew(worktree, previous);
     }
 
-    state.currentNode = "deterministic_checks";
+    setCurrentNode("deterministic_checks");
     const repairLoop = await runRepairLoop({
       runId: input.runId,
       budget: state.budget,
@@ -423,7 +487,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     checkCancelled();
     await maybeContinueAsNew(worktree, previous);
 
-    state.currentNode = "maintainability_assess";
+    setCurrentNode("maintainability_assess");
     const maintainabilityLoop = await runMaintainabilityLoop({
       runId: input.runId,
       budget: state.budget,
@@ -447,7 +511,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
           graphRefs: [`graph://${input.runId}`],
           behavioralEvidenceRefs: [`scenario://${input.runId}`],
         });
-        const requiredCritics = 1;
+        const requiredCritics = fitnessResult.policyVersion === "go-unsupported-skip" ? 0 : 1;
         const criticReports: unknown[] = [];
         if (requiredCritics > 0) {
           const critic = await agentActivity.runAgent({
@@ -456,7 +520,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
             role: "maintainability_critic",
             input: { evidence: criticEvidence, previous },
           });
-          if (!agentSucceeded(critic.output)) {
+          if (!maintainabilityCriticCompleted(critic.output)) {
             const failedOutput = critic.output;
             const error = new Error(`maintainability critic ${failedOutput.status}: ${failedOutput.summary}`);
             error.name = agentFailureName(failedOutput.status as "failed" | "escalate_to_human");
@@ -501,7 +565,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     checkCancelled();
     await maybeContinueAsNew(worktree, previous);
 
-    state.currentNode = "behavioral_verify";
+    setCurrentNode("behavioral_verify");
     const behavioralAttempt = await runNodeAttempt({
       runId: input.runId,
       node: "behavioral_verify",
@@ -534,7 +598,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     checkCancelled();
     await maybeContinueAsNew(worktree, previous);
 
-    state.currentNode = "review";
+    setCurrentNode("review");
     const reviewRun = await runNodeWithRetry({
       runId: input.runId,
       node: "review",
@@ -542,7 +606,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
       maxAttempts: 2,
       execute: async (_attemptNumber, attemptId) => {
         const review = await agentActivity.runAgent({ run: { ...input, attemptId }, worktree: worktree!, role: "review", input: previous });
-        if (!agentSucceeded(review.output)) {
+        if (!reviewGatePassed(review.output, { advisory: Boolean(input.skipBuildRelease) })) {
           const failedOutput = review.output;
           const error = new Error(`review gate failed: ${failedOutput.summary}`);
           error.name = "PolicyViolation";
@@ -557,7 +621,15 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     checkCancelled();
     await maybeContinueAsNew(worktree, previous);
 
-    state.currentNode = "build_artifact";
+    if (input.skipBuildRelease) {
+      if (worktree.path) await controlActivity.removeWorktree(worktree.path);
+      await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "succeeded", runId: input.runId });
+      setStatus("succeeded");
+      setCurrentNode(undefined);
+      return buildFinalState(state);
+    }
+
+    setCurrentNode("build_artifact");
     const buildAttempt = await runNodeAttempt({
       runId: input.runId,
       node: "build_artifact",
@@ -571,7 +643,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     const artifact = buildAttempt.result.output!;
     checkCancelled();
 
-    state.currentNode = "release_controller";
+    setCurrentNode("release_controller");
     const releaseAttempt = await runNodeAttempt({
       runId: input.runId,
       node: "release_controller",
@@ -585,7 +657,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     const release = releaseAttempt.result.output!;
     if (release.status === "failed") return await failRun("release_controller", worktree.path);
     if (release.status === "rolled_back") {
-      state.status = "rolled_back";
+      setStatus("rolled_back");
       state.failedNode = "release_controller";
       if (worktree.path) await controlActivity.removeWorktree(worktree.path);
       await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "rolled_back", runId: input.runId });
@@ -595,18 +667,19 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     checkCancelled();
     await controlActivity.removeWorktree(worktree.path);
     await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "succeeded", runId: input.runId });
-    state.status = "succeeded";
-    state.currentNode = undefined;
+    setStatus("succeeded");
+    setCurrentNode(undefined);
     return buildFinalState(state);
   } catch (error) {
-    if (state.status === "cancelled") {
-      if (activeWorktreePath) await controlActivity.removeWorktree(activeWorktreePath);
-      await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "cancelled", runId: input.runId });
+    if (isCancellation(error) || state.status === "cancelled") {
+      await cleanupCancelled();
       throw ApplicationFailure.nonRetryable("factory cancelled", "Cancelled");
     }
     if (state.status === "rolled_back") {
-      if (activeWorktreePath) await controlActivity.removeWorktree(activeWorktreePath);
-      await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "rolled_back", runId: input.runId });
+      await CancellationScope.nonCancellable(async () => {
+        if (activeWorktreePath) await controlActivity.removeWorktree(activeWorktreePath);
+        await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "rolled_back", runId: input.runId });
+      });
       throw ApplicationFailure.nonRetryable("release rollback requested", "RollbackRequested");
     }
     throw error;

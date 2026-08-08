@@ -68,9 +68,11 @@ services:
         condition: service_healthy
 
   temporal-ui:
-    image: temporalio/ui:2.44.1
+    image: temporalio/ui:2.53.0
     environment:
       TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_WORKFLOW_TERMINATE_DISABLED: "true"
+      TEMPORAL_WORKFLOW_CANCEL_DISABLED: "true"
     ports: ["8080:8080"]
     depends_on:
       temporal:

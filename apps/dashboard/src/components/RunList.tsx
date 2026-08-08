@@ -1,4 +1,5 @@
 import type { FactoryRunSummary } from "../types";
+import { temporalWorkflowUrl } from "../lib/temporal";
 
 interface RunListProps {
   runs: FactoryRunSummary[];
@@ -10,6 +11,7 @@ interface RunListProps {
 function statusClass(status: string): string {
   const normalized = status.toLowerCase();
   if (normalized === "running") return "status-running";
+  if (normalized === "input_required") return "status-input_required";
   if (normalized === "succeeded") return "status-succeeded";
   if (normalized === "failed" || normalized === "rolled_back") return "status-failed";
   if (normalized === "cancelled") return "status-cancelled";
@@ -42,8 +44,8 @@ export function RunList({ runs, selectedRunId, onSelect, loading }: RunListProps
   if (runs.length === 0) {
     return (
       <div className="muted-block">
-        <strong>No runs yet</strong>
-        Create a task above. New runs appear here and open on the pipeline.
+        <strong>Nothing needs attention</strong>
+        Runs awaiting input or recently failed appear here. Browse all runs in Temporal UI.
       </div>
     );
   }
@@ -52,6 +54,7 @@ export function RunList({ runs, selectedRunId, onSelect, loading }: RunListProps
     <ul className="run-list" aria-label="Factory runs">
       {runs.map((run) => {
         const selected = selectedRunId === run.runId;
+        const temporalUrl = temporalWorkflowUrl(run.runId, run.workflowId);
         return (
           <li key={run.runId}>
             <button
@@ -67,6 +70,17 @@ export function RunList({ runs, selectedRunId, onSelect, loading }: RunListProps
                 <span>{formatTime(run.updatedAt)}</span>
               </div>
             </button>
+            {temporalUrl && (
+              <a
+                className="run-item-temporal-link"
+                href={temporalUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(event) => event.stopPropagation()}
+              >
+                Temporal
+              </a>
+            )}
           </li>
         );
       })}
