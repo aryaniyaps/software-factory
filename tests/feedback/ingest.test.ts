@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createFeedbackIngest } from "../../src/feedback/ingest.js";
-import type { FactoryProjection } from "../../src/db/factory-projection.js";
+import type { FeedbackProjection } from "../../src/feedback/ingest.js";
 import type { EvidenceStore } from "../../src/evidence/evidence-store.js";
 
 function createMockDeps() {
@@ -39,7 +39,7 @@ function createMockDeps() {
         evidenceRefs: [{ schemaVersion: "evidence-ref.v1" as const, id: `ev-${feedbackId}`, sha256: "a".repeat(64), uri: "file:///ev" }],
       };
     },
-  } satisfies Pick<FactoryProjection, "recordFeedbackItem" | "recordIncidentLink" | "recordOracleCalibration" | "getFeedbackTraceability">;
+  } satisfies FeedbackProjection;
 
   const evidenceStore = {
     async appendEvidence(input: { runId: string; item: { id: string }; body: string | Buffer }) {

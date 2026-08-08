@@ -7,6 +7,7 @@ import {
   type WorkflowBudgetState,
 } from "../../contracts/nodes.js";
 import type { WorkflowBudget } from "../../policy/retry-policy.js";
+import type { ExecutionRecord } from "../../contracts/execution.js";
 
 export type FactoryWorkflowState = FactoryRunState;
 export { FACTORY_NODE_NAMES };
@@ -14,6 +15,7 @@ export type { FactoryNodeName, FactoryWorkflowInput, NodeAttemptRef, WorkflowBud
 
 export interface WorkflowContinuation {
   nodeAttempts: readonly NodeAttemptRef[];
+  executionRecords?: readonly ExecutionRecord[];
   budget: WorkflowBudget;
   continuationGeneration: number;
   worktree?: { path: string; branch: string };

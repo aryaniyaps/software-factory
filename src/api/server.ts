@@ -1,15 +1,9 @@
-import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import Koa from "koa";
 import Router from "@koa/router";
 import bodyParser from "koa-bodyparser";
-import type { FeedbackApiStore } from "./feedback-api.js";
-import { incidentInputFromBody, webhookInputFromBody } from "./feedback-api.js";
 import { createAuthMiddleware } from "./auth.js";
-import { mountEvidenceRoutes } from "./evidence-routes.js";
-import type { EvidenceService } from "./evidence-service.js";
-import type { OperationsService } from "./operations-service.js";
-import type { SignedUrlConfig } from "./signed-urls.js";
+import type { ExecutionsService, ExecutionCommand } from "./executions-service.js";
 import {
   normalizeTaskIntake,
   repositoryFullName,
@@ -22,19 +16,8 @@ import {
   repositoryValidationError,
 } from "./github-integration-routes.js";
 
-export interface ApiStore {
-  createTask(input: { repository: string; title: string; description: string }): Promise<string>;
-  getRun(id: string): Promise<unknown>;
-  getEvents?(id: string): Promise<unknown[]>;
-  cancelRun(id: string): Promise<void>;
-  feedback?: FeedbackApiStore;
-}
-
 export interface ApiAppOptions {
-  store: ApiStore;
-  evidenceService?: EvidenceService;
-  operationsService?: OperationsService;
-  signedUrls?: SignedUrlConfig;
+  executions: ExecutionsService;
   apiToken?: string;
   github?: GitHubAppService;
   githubWebhookSecret?: string;
@@ -56,7 +39,8 @@ export function createApiApp(options: ApiAppOptions): Koa {
     try {
       await next();
     } catch (error) {
-      ctx.status = 400;
+      const notFound = error instanceof Error && /not found/i.test(error.message);
+      ctx.status = notFound ? 404 : 400;
       ctx.body = { schemaVersion: "error.v1", error: error instanceof Error ? error.message : String(error) };
     }
   });
@@ -67,116 +51,46 @@ export function createApiApp(options: ApiAppOptions): Koa {
     webhookSecret: options.githubWebhookSecret,
   });
 
-  router.post("/tasks", async (ctx) => {
-    const input = (ctx.request.body ?? {}) as TaskIntakeInput;
-    let normalized;
-    try {
-      normalized = normalizeTaskIntake(input);
-      if (options.github) {
-        const status = await options.github.getStatus();
-        if (!status.connected) {
-          ctx.status = 409;
-          ctx.body = { schemaVersion: "error.v1", error: "GitHub App is not connected" };
-          return;
-        }
-        const accessible = await options.github.validateRepositoryAccessible(repositoryFullName(normalized.repository));
-        if (!accessible) {
-          ctx.status = 422;
-          ctx.body = {
-            schemaVersion: "error.v1",
-            error: `repository is not accessible via the connected GitHub App: ${repositoryFullName(normalized.repository)}`,
-          };
-          return;
-        }
-      }
-    } catch (error) {
-      ctx.status = 422;
-      ctx.body = {
-        schemaVersion: "error.v1",
-        error: repositoryValidationError(error) ?? (error instanceof Error ? error.message : String(error)),
-      };
+  router.post("/executions", async (ctx) => {
+    const task = await validateTask(ctx.request.body ?? {}, options.github);
+    if ("error" in task) {
+      ctx.status = task.status;
+      ctx.body = { schemaVersion: "error.v1", error: task.error };
       return;
     }
-    const id = await options.store.createTask(normalized);
+    const execution = await options.executions.createExecution(task.value);
     ctx.status = 201;
-    ctx.body = { id };
+    ctx.body = execution;
   });
 
-  router.get("/runs/:id", async (ctx) => {
-    const run = await options.store.getRun(ctx.params.id);
-    ctx.status = run ? 200 : 404;
-    ctx.body = run ?? { schemaVersion: "error.v1", error: "run not found" };
+  router.get("/executions", async (ctx) => {
+    ctx.body = await options.executions.listExecutions();
   });
 
-  router.get("/runs/:id/events", async (ctx) => {
-    ctx.body = await options.store.getEvents?.(ctx.params.id) ?? [];
+  router.get("/executions/:workflowId", async (ctx) => {
+    const execution = await options.executions.getExecution(ctx.params.workflowId);
+    ctx.status = execution ? 200 : 404;
+    ctx.body = execution ?? { schemaVersion: "error.v1", error: "execution not found" };
   });
 
-  router.post("/runs/:id/cancel", async (ctx) => {
-    await options.store.cancelRun(ctx.params.id);
-    ctx.body = { status: "cancelled" };
+  router.post("/executions/:workflowId/commands", async (ctx) => {
+    const command = parseCommand(ctx.request.body);
+    await options.executions.command(ctx.params.workflowId, command);
+    ctx.status = 202;
+    ctx.body = { schemaVersion: "execution-command.v1", status: "signaled", command: command.type };
   });
 
-  router.post("/feedback", async (ctx) => {
-    if (!options.store.feedback) {
-      ctx.status = 501;
-      ctx.body = { schemaVersion: "error.v1", error: "feedback ingest not configured" };
-      return;
-    }
-    const deliveryId = (ctx.request.headers["x-delivery-id"] as string | undefined) ?? randomUUID();
-    const body = (ctx.request.body ?? {}) as Partial<{ externalId: string; summary: string; body: string; runId: string; incidentId: string; artifactDigest: string }>;
-    if (!body.summary || !body.body || !body.runId) {
-      ctx.status = 422;
-      ctx.body = { schemaVersion: "error.v1", error: "summary, body, and runId are required" };
-      return;
-    }
-    const input = webhookInputFromBody(body as { summary: string; body: string; runId: string; externalId?: string; incidentId?: string; artifactDigest?: string }, deliveryId);
-    const result = await options.store.feedback.ingestFeedback(input);
-    ctx.status = result.inserted ? 201 : 200;
-    ctx.body = result;
-  });
-
-  router.post("/incidents", async (ctx) => {
-    if (!options.store.feedback) {
-      ctx.status = 501;
-      ctx.body = { schemaVersion: "error.v1", error: "feedback ingest not configured" };
-      return;
-    }
-    const deliveryId = (ctx.request.headers["x-delivery-id"] as string | undefined) ?? randomUUID();
-    const body = (ctx.request.body ?? {}) as Partial<{ incidentId: string; summary: string; body: string; runId: string; artifactDigest: string; outcome: "rollback" | "resolved" | "open"; deliveryId: string }>;
-    if (!body.incidentId || !body.summary || !body.body || !body.runId) {
-      ctx.status = 422;
-      ctx.body = { schemaVersion: "error.v1", error: "incidentId, summary, body, and runId are required" };
-      return;
-    }
-    const input = incidentInputFromBody(body as { incidentId: string; summary: string; body: string; runId: string; artifactDigest?: string; outcome?: "rollback" | "resolved" | "open"; deliveryId?: string }, deliveryId);
-    const result = await options.store.feedback.ingestFeedback(input);
-    ctx.status = result.inserted ? 201 : 200;
-    ctx.body = result;
-  });
-
-  router.get("/feedback/:id/trace", async (ctx) => {
-    if (!options.store.feedback) {
-      ctx.status = 501;
-      ctx.body = { schemaVersion: "error.v1", error: "feedback ingest not configured" };
-      return;
-    }
-    const trace = await options.store.feedback.getFeedbackTrace(ctx.params.id);
-    ctx.status = trace ? 200 : 404;
-    ctx.body = trace ?? { schemaVersion: "error.v1", error: "feedback not found" };
+  router.get("/executions/:workflowId/objects/:objectId", async (ctx) => {
+    const body = await options.executions.getObject(
+      ctx.params.workflowId,
+      decodeURIComponent(ctx.params.objectId),
+    );
+    ctx.type = "application/octet-stream";
+    ctx.body = body;
   });
 
   app.use(router.routes());
   app.use(router.allowedMethods());
-
-  if (options.evidenceService && options.operationsService && options.signedUrls) {
-    mountEvidenceRoutes(app, {
-      evidenceService: options.evidenceService,
-      operationsService: options.operationsService,
-      signedUrls: options.signedUrls,
-    });
-  }
-
   app.use((ctx) => {
     ctx.status = 404;
     ctx.body = { schemaVersion: "error.v1", error: "not found" };
@@ -186,4 +100,39 @@ export function createApiApp(options: ApiAppOptions): Koa {
 
 export function createApiServer(options: ApiAppOptions): Server {
   return createServer(createApiApp(options).callback());
+}
+
+async function validateTask(
+  body: unknown,
+  github?: GitHubAppService,
+): Promise<
+  | { value: { repository: string; title: string; description: string } }
+  | { status: number; error: string }
+> {
+  try {
+    const normalized = normalizeTaskIntake(body as TaskIntakeInput);
+    if (github) {
+      const status = await github.getStatus();
+      if (!status.connected) return { status: 409, error: "GitHub App is not connected" };
+      const fullName = repositoryFullName(normalized.repository);
+      if (!await github.validateRepositoryAccessible(fullName)) {
+        return { status: 422, error: `repository is not accessible via the connected GitHub App: ${fullName}` };
+      }
+    }
+    return { value: normalized };
+  } catch (error) {
+    return {
+      status: 422,
+      error: repositoryValidationError(error) ?? (error instanceof Error ? error.message : String(error)),
+    };
+  }
+}
+
+function parseCommand(body: unknown): ExecutionCommand {
+  if (!body || typeof body !== "object" || !("type" in body)) throw new Error("command type is required");
+  const command = body as ExecutionCommand;
+  if (command.type === "cancel" || command.type === "rollback") return command;
+  if (command.type === "rerun_node" && typeof command.node === "string") return command;
+  if (command.type === "answer_clarification" && command.answer) return command;
+  throw new Error("unsupported execution command");
 }

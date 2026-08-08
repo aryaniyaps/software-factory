@@ -1,5 +1,6 @@
 import type { FactoryWorkflowInput } from "../client.js";
 import type { AgentInput, AgentOutput, AgentRole } from "../../contracts/nodes.js";
+import type { AgentExecutionRecords } from "../../evidence/agent-execution-recorder.js";
 
 export interface RepositoryPreparation {
   repository: string;
@@ -25,6 +26,7 @@ export interface AgentActivityInput {
 export interface AgentActivityResult {
   sessionId: string;
   output: AgentOutput;
+  execution?: AgentExecutionRecords;
 }
 
 export interface ChecksInput {
@@ -165,14 +167,6 @@ export interface DeploymentTargetInfo {
   previousDigest?: string;
 }
 
-export interface TaskStatusInput {
-  taskId: string;
-  status: string;
-  runId: string;
-  currentNode?: string;
-  failureReason?: string;
-}
-
 export interface CollectRepositoryChurnInput {
   runId: string;
   repositoryRoot: string;
@@ -286,8 +280,6 @@ export interface FactoryActivities {
   observeDeployment(input: ObserveDeploymentInput): Promise<ObservationSignals>;
   rollbackDeployment(input: RollbackDeploymentInput): Promise<RollbackDeploymentResult>;
   healthCheck(input: HealthCheckInput): Promise<{ healthy: boolean; url: string }>;
-  updateTaskStatus(input: TaskStatusInput): Promise<void>;
-  recordFactoryEvent(input: { runId: string; eventId: string; type: string; payload: unknown }): Promise<void>;
   collectRepositoryChurn(input: CollectRepositoryChurnInput): Promise<CollectRepositoryChurnResult>;
   collectRepositoryCoChanges(input: CollectRepositoryCoChangesInput): Promise<CollectRepositoryCoChangesResult>;
   sampleNightlyProbes(input: SampleNightlyProbesInput): Promise<SampleNightlyProbesResult>;
@@ -314,8 +306,6 @@ export declare function verifyRelease(input: VerifyReleaseInput): Promise<Verify
 export declare function observeDeployment(input: ObserveDeploymentInput): Promise<ObservationSignals>;
 export declare function rollbackDeployment(input: RollbackDeploymentInput): Promise<RollbackDeploymentResult>;
 export declare function healthCheck(input: HealthCheckInput): Promise<{ healthy: boolean; url: string }>;
-export declare function updateTaskStatus(input: TaskStatusInput): Promise<void>;
-export declare function recordFactoryEvent(input: { runId: string; eventId: string; type: string; payload: unknown }): Promise<void>;
 export declare function collectRepositoryChurn(input: CollectRepositoryChurnInput): Promise<CollectRepositoryChurnResult>;
 export declare function collectRepositoryCoChanges(input: CollectRepositoryCoChangesInput): Promise<CollectRepositoryCoChangesResult>;
 export declare function sampleNightlyProbes(input: SampleNightlyProbesInput): Promise<SampleNightlyProbesResult>;

@@ -88,6 +88,10 @@ export interface NodeAttemptRef {
   readonly node: FactoryNodeName;
   readonly attemptId: string;
   readonly status: "succeeded" | "failed" | "cancelled";
+  readonly startedAt?: string;
+  readonly completedAt?: string;
+  readonly failureCode?: string;
+  readonly evidenceRefs?: readonly string[];
 }
 
 export const WorkflowBudgetStateSchema = Type.Object({
@@ -217,10 +221,9 @@ function normalizeAgentOutputCandidate(value: unknown): unknown {
     ? record.evidenceRefs.filter((ref): ref is string => typeof ref === "string" && ref.trim().length > 0)
     : [];
   if (refs.length === 0) {
-    // Schema requires minItems:1; abstained/failed reviews often omit refs when evidence stubs are missing.
-    record.evidenceRefs = record.status === "abstained"
-      ? ["evidence://abstained"]
-      : ["evidence://unspecified"];
+    // Only a truthful abstention may use the explicit no-evidence sentinel.
+    // Successful and failed work must supply a real evidence reference.
+    record.evidenceRefs = record.status === "abstained" ? ["evidence://abstained"] : refs;
   } else {
     record.evidenceRefs = refs;
   }

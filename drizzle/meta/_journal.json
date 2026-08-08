@@ -24,10 +24,24 @@
       "breakpoints": true
     },
     {
+      "idx": 3,
+      "version": "7",
+      "when": 1786113000000,
+      "tag": "0003_greedy_kate_bishop",
+      "breakpoints": true
+    },
+    {
       "idx": 4,
       "version": "7",
       "when": 1786115000000,
       "tag": "0004_github_installations",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786182198663,
+      "tag": "0006_temporal_execution_authority_generated",
       "breakpoints": true
     }
   ]

@@ -1,0 +1,22 @@
+DROP TABLE IF EXISTS "agent_sessions" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "agent_turns" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "deployment_observations" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "evidence_items" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "evidence_manifests" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "factory_artifacts" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "factory_claim_revisions" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "factory_clarifications" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "factory_deployments" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "factory_event_outbox" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "factory_events" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "factory_messages" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "factory_node_attempts" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "factory_runs" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "feedback_items" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "fitness_results" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "gate_decisions" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "incident_links" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "oracle_calibrations" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "probe_runs" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "scenario_runs" CASCADE;--> statement-breakpoint
+DROP TABLE IF EXISTS "tool_calls" CASCADE;

@@ -23,14 +23,12 @@ import {
   jsonRpcHandler,
   UserBuilder,
 } from "@a2a-js/sdk/server/express";
-import type { ApiStore } from "./server.js";
-import type { OperationsService } from "./operations-service.js";
+import type { ExecutionsService } from "./executions-service.js";
 import { normalizeTaskIntake } from "../tasks/intake-normalizer.js";
 import type { FactoryA2ATaskStore } from "../db/a2a-task-store.js";
 
 export interface A2AServerOptions {
-  store: ApiStore;
-  operations: OperationsService;
+  executions: ExecutionsService;
   publicUrl: string;
   apiToken: string;
   taskStore?: FactoryA2ATaskStore;
@@ -71,7 +69,7 @@ class FactoryAgentExecutor implements AgentExecutor {
     if (runId) {
       const clarification = clarificationMetadata(context.task?.status?.message);
       if (clarification) {
-        await this.options.operations.answerClarification(runId, {
+        await this.options.executions.command(runId, { type: "answer_clarification", answer: {
           schemaVersion: "clarification-answer.v1",
           requestId: clarification.requestId,
           answerId: context.userMessage.messageId,
@@ -80,16 +78,15 @@ class FactoryAgentExecutor implements AgentExecutor {
           body: textFromMessage(context.userMessage),
           stateRevision: clarification.stateRevision,
           createdAt: new Date().toISOString(),
-        });
+        } });
       }
     } else {
       const repository = stringMetadata(context.task?.metadata, "repository");
-      runId = await this.options.store.createTask(
-        normalizeTaskIntake({
+      const created = await this.options.executions.createExecution(normalizeTaskIntake({
           prompt: textFromMessage(context.userMessage),
           repository,
-        }),
-      );
+        }));
+      runId = created.workflowId;
       this.runByTask.set(context.taskId, runId);
     }
 
@@ -102,7 +99,7 @@ class FactoryAgentExecutor implements AgentExecutor {
       metadata: { factoryRunId: runId },
     }));
 
-    const snapshot = await waitForObservableState(this.options.store, runId);
+    const snapshot = await waitForObservableState(this.options.executions, runId);
     bus.publish(AgentEvent.statusUpdate({
       taskId: context.taskId,
       contextId: context.contextId,
@@ -116,7 +113,7 @@ class FactoryAgentExecutor implements AgentExecutor {
     const runId = this.runByTask.get(taskId)
       ?? await this.options.taskStore?.runIdForTask(taskId);
     if (!runId) throw new Error("A2A task mapping is unavailable");
-    await this.options.operations.cancelRun(runId);
+    await this.options.executions.command(runId, { type: "cancel" });
     bus.publish(AgentEvent.statusUpdate({
       taskId,
       contextId: taskId,
@@ -180,13 +177,13 @@ function factoryAgentCard(publicUrl: string): AgentCard {
 
 type RunSnapshot = {
   status?: string;
-  failureReason?: string;
-  events?: Array<{ type?: string; payload?: unknown }>;
+  failedNode?: string;
+  timeline?: Array<{ type?: string; payload?: unknown }>;
 };
 
-async function waitForObservableState(store: ApiStore, runId: string): Promise<RunSnapshot> {
+async function waitForObservableState(executions: ExecutionsService, workflowId: string): Promise<RunSnapshot> {
   for (let attempt = 0; attempt < 172_800; attempt += 1) {
-    const snapshot = (await store.getRun(runId) ?? {}) as RunSnapshot;
+    const snapshot = (await executions.getExecution(workflowId) ?? {}) as RunSnapshot;
     if (
       snapshot.status === "input_required"
       || snapshot.status === "succeeded"
@@ -198,12 +195,12 @@ async function waitForObservableState(store: ApiStore, runId: string): Promise<R
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  return (await store.getRun(runId) ?? { status: "running" }) as RunSnapshot;
+  return (await executions.getExecution(workflowId) ?? { status: "running" }) as RunSnapshot;
 }
 
 function statusForRun(snapshot: RunSnapshot, context: RequestContext): TaskStatus {
   if (snapshot.status === "input_required") {
-    const request = [...(snapshot.events ?? [])]
+    const request = [...(snapshot.timeline ?? [])]
       .reverse()
       .find((event) => event.type === "clarification.requested")?.payload as
       | { requestId?: string; question?: string; stateRevision?: number }
@@ -224,7 +221,7 @@ function statusForRun(snapshot: RunSnapshot, context: RequestContext): TaskStatu
     return status(TaskState.TASK_STATE_CANCELED, context, "Factory run cancelled");
   }
   if (snapshot.status === "failed" || snapshot.status === "rolled_back") {
-    return status(TaskState.TASK_STATE_FAILED, context, snapshot.failureReason ?? snapshot.status);
+    return status(TaskState.TASK_STATE_FAILED, context, snapshot.failedNode ?? snapshot.status);
   }
   return status(TaskState.TASK_STATE_WORKING, context, "Software Factory is working");
 }

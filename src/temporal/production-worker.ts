@@ -10,9 +10,8 @@ import { HindsightClient } from "@vectorize-io/hindsight-client";
 import { assertHindsightCompatibility, HindsightMemory } from "../integrations/hindsight.js";
 import { memoryBankFromEnv, memoryTags, resolveProjectBank, validateHindsightTemplate } from "../integrations/hindsight-config.js";
 import { assembleAgentMemory, memoryQueryFromAgentValue, retainableAgentOutcome } from "../agents/memory.js";
-import { createFactoryProjection } from "../db/factory-projection.js";
-import { createAgentSessionLedger } from "../db/agent-session-ledger.js";
 import { createFilesystemObjectStore } from "../evidence/object-store.js";
+import { createAgentExecutionRecorder } from "../evidence/agent-execution-recorder.js";
 import { PiAgentRunner } from "../agents/pi-agent.js";
 import { CrabboxWorkspaceProvider } from "../workspaces/crabbox-provider.js";
 import { officialCrabboxRuntime } from "../workspaces/crabbox-runtime.js";
@@ -24,7 +23,6 @@ import { securityGate } from "../gates/security-gate.js";
 import { createRepositoryActivities } from "./activities/repository.js";
 import { createCrabboxActivityRuntime } from "./activities/crabbox.js";
 import { createAgentActivities } from "./activities/agent.js";
-import { createProjectionActivities } from "./activities/projection.js";
 import { createProductionArtifactBuilder } from "../security/production-builder.js";
 import { createBuildActivities } from "./activities/build.js";
 import { createDeployActivities, createLocalDeployActivities, type DeploymentTarget } from "./activities/deploy.js";
@@ -126,9 +124,7 @@ export async function startWorkers(): Promise<void> {
   const githubInstallations = createGitHubInstallationStore(db);
   const github = githubConfig ? createGitHubAppService(githubConfig, githubInstallations) : undefined;
   if (github) await github.bootstrapFromEnv();
-  const projection = createFactoryProjection(db);
-  const sessionLedger = createAgentSessionLedger(
-    db,
+  const sessionLedger = createAgentExecutionRecorder(
     createFilesystemObjectStore(
       process.env.EVIDENCE_OBJECT_STORE_ROOT ?? "/tmp/software-factory-evidence",
     ),
@@ -212,19 +208,12 @@ export async function startWorkers(): Promise<void> {
       health: new HealthChecker(),
     });
   const health = new HealthChecker();
-  const projectionActivities = createProjectionActivities(projection);
   const hiddenScenariosRoot = process.env.FACTORY_HIDDEN_SCENARIOS_ROOT
     ?? join(process.cwd(), "factory/hidden-scenarios");
   const verifier = createVerifierActivities({ hiddenScenariosRoot });
   const metaFactoryActivities = createMetaFactoryActivities();
   const healthActivities = createHealthActivities({
     enqueueWorkOrder: async (input) => {
-      await projection.recordEvent({
-        runId: input.runId,
-        eventId: `debt-work-order:${input.workOrder.id}`,
-        type: "debt_work_order_enqueued",
-        payload: input.workOrder,
-      });
       return { enqueued: true, workOrderId: input.workOrder.id };
     },
   });
@@ -233,7 +222,6 @@ export async function startWorkers(): Promise<void> {
     ...agent,
     ...build,
     ...deploy,
-    ...projectionActivities,
     async securityScan(input: { worktree: { path: string } }) {
       const stopHeartbeat = startActivityHeartbeat();
       try {
@@ -252,16 +240,6 @@ export async function startWorkers(): Promise<void> {
       } catch {
         return { healthy: false, url: input.url };
       }
-    },
-    async updateTaskStatus(input: { taskId: string; status: string; runId: string; currentNode?: string; failureReason?: string }) {
-      await projection.recordRun({
-        runId: input.runId,
-        workflowId: `factory-${input.runId}`,
-        taskId: input.taskId,
-        status: input.status,
-        currentNode: input.currentNode,
-        failureReason: input.failureReason,
-      });
     },
     runBehavioralVerification: verifier.runBehavioralVerification,
     ...healthActivities,

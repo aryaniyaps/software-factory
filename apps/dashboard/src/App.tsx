@@ -4,221 +4,107 @@ import { CreateTaskForm } from "./components/CreateTaskForm";
 import { ClarificationPanel } from "./components/ClarificationPanel";
 import { OutcomeStrip } from "./components/OutcomeStrip";
 import { PipelineGraph } from "./components/PipelineGraph";
-import { RunDetailPanel } from "./components/RunDetailPanel";
 import { RunList } from "./components/RunList";
-import { useRunPanels } from "./hooks/useRunPanels";
 import { useRunDetail, useRunsList } from "./hooks/useRuns";
 import { temporalWorkflowUrl } from "./lib/temporal";
 import "./styles/tokens.css";
 import "./styles/app.css";
-import type { ClarificationRequest, RunEvent } from "./types";
+import type { ClarificationRequest, ExecutionEvent } from "./types";
 
 export function App() {
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const { runs, error: runsError, loading: runsLoading, refresh: refreshRuns } = useRunsList(undefined, selectedRunId);
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState(false);
-
+  const { runs, error: runsError, loading: runsLoading, refresh: refreshRuns } =
+    useRunsList(undefined, selectedWorkflowId);
   const { detail, error: detailError, loading: detailLoading, refresh: refreshDetail, isRunning } =
-    useRunDetail(selectedRunId, 1500);
-
-  const {
-    data: panelData,
-    error: panelError,
-    loading: panelLoading,
-    refresh: refreshPanels,
-  } = useRunPanels(selectedRunId);
+    useRunDetail(selectedWorkflowId, 1500);
 
   useEffect(() => {
     setSelectedNode(null);
     setActionError(null);
-  }, [selectedRunId]);
+  }, [selectedWorkflowId]);
 
-  const handleSelectRun = useCallback((runId: string) => {
-    setSelectedRunId(runId);
-  }, []);
+  const handleCreateTask = useCallback(async (input: { repository: string; prompt: string }) => {
+    const created = await api.createExecution(input);
+    await refreshRuns();
+    setSelectedWorkflowId(created.workflowId);
+  }, [refreshRuns]);
 
-  const handleCreateTask = useCallback(
-    async (input: { repository: string; prompt: string }) => {
-      const { id } = await api.createTask(input);
-      await refreshRuns();
-      setSelectedRunId(id);
-    },
-    [refreshRuns],
-  );
-
-  const handleCancel = useCallback(async () => {
-    if (!selectedRunId) return;
+  const runCommand = useCallback(async (command: unknown) => {
+    if (!selectedWorkflowId) return;
     setActionPending(true);
     setActionError(null);
     try {
-      await api.cancelRun(selectedRunId);
-      await Promise.all([refreshRuns(), refreshDetail(), refreshPanels()]);
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err));
+      await api.commandExecution(selectedWorkflowId, command);
+      await Promise.all([refreshRuns(), refreshDetail()]);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
     } finally {
       setActionPending(false);
     }
-  }, [selectedRunId, refreshRuns, refreshDetail, refreshPanels]);
+  }, [selectedWorkflowId, refreshRuns, refreshDetail]);
 
-  const handleRerun = useCallback(async () => {
-    if (!selectedRunId || !selectedNode) return;
-    setActionPending(true);
-    setActionError(null);
-    try {
-      await api.rerunNode(selectedRunId, selectedNode);
-      await Promise.all([refreshRuns(), refreshDetail(), refreshPanels()]);
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setActionPending(false);
-    }
-  }, [selectedRunId, selectedNode, refreshRuns, refreshDetail, refreshPanels]);
-
-  const error = runsError ?? detailError ?? panelError ?? actionError;
-  const pendingClarification = latestPendingClarification(detail?.events ?? []);
-  const canCancel = Boolean(selectedRunId) && (isRunning || detail?.summary.status === "running");
-  const canRerun = Boolean(selectedRunId && selectedNode);
-  const temporalUrl = selectedRunId
-    ? temporalWorkflowUrl(selectedRunId, detail?.summary.workflowId)
-    : null;
-
-  const handleClarificationAnswer = useCallback(async (answer: string) => {
-    if (!selectedRunId || !pendingClarification) return;
-    await api.answerClarification(
-      selectedRunId,
-      pendingClarification.requestId,
-      answer,
-      pendingClarification.stateRevision,
-    );
-    await Promise.all([refreshRuns(), refreshDetail(), refreshPanels()]);
-  }, [selectedRunId, pendingClarification, refreshRuns, refreshDetail, refreshPanels]);
+  const pendingClarification = latestPendingClarification(detail?.timeline ?? []);
+  const temporalUrl = detail
+    ? temporalWorkflowUrl(detail.runId, detail.workflowId)
+    : selectedWorkflowId ? temporalWorkflowUrl("", selectedWorkflowId) : null;
+  const error = runsError ?? detailError ?? actionError;
 
   return (
     <div className="app">
       <header className="app-header">
         <h1>Software Factory</h1>
-        <span className="subtitle">Operate — approvals, evidence, and pipeline</span>
-        {temporalUrl && (
-          <a className="header-link" href={temporalUrl} target="_blank" rel="noopener noreferrer">
-            Open in Temporal
-          </a>
-        )}
+        <span className="subtitle">Temporal-owned executions and graph</span>
+        {temporalUrl && <a className="header-link" href={temporalUrl} target="_blank" rel="noopener noreferrer">Open in Temporal</a>}
       </header>
-
-      {error && (
-        <div className="error-banner" role="alert">
-          {error}
-        </div>
-      )}
-
+      {error && <div className="error-banner" role="alert">{error}</div>}
       <div className="app-body">
-        <aside className="sidebar" aria-label="Tasks and runs">
+        <aside className="sidebar" aria-label="Tasks and executions">
           <section className="sidebar-section">
-            <h2>Create task</h2>
+            <h2>Create execution</h2>
             <CreateTaskForm onSubmit={handleCreateTask} />
           </section>
           <section className="sidebar-section sidebar-section--runs">
             <h2>Needs attention</h2>
-            <RunList
-              runs={runs}
-              selectedRunId={selectedRunId}
-              onSelect={handleSelectRun}
-              loading={runsLoading}
-            />
+            <RunList runs={runs} selectedRunId={selectedWorkflowId} onSelect={setSelectedWorkflowId} loading={runsLoading} />
           </section>
         </aside>
-
         <main className="main">
           <div className="main-toolbar">
             <div className="run-meta">
-              {selectedRunId ? (
-                <>
-                  <strong>{selectedRunId}</strong>
-                  {detailLoading && !detail && <> · loading…</>}
-                  {detail && (
-                    <>
-                      {" · "}
-                      <span className={`status-badge status-${detail.summary.status}`}>
-                        {detail.summary.status}
-                      </span>
-                      {detail.summary.currentNode && <> · node: {detail.summary.currentNode}</>}
-                    </>
-                  )}
-                </>
-              ) : (
-                "No run selected — create a task or pick a run"
-              )}
+              {detail ? <><strong>{detail.workflowId}</strong>{" · "}<span className={`status-badge status-${detail.status}`}>{detail.status}</span>{detail.currentNode && <> · node: {detail.currentNode}</>}</> : selectedWorkflowId ? `${selectedWorkflowId} · loading…` : "No execution selected"}
             </div>
             {selectedNode && <span className="toolbar-hint">rerun target: {selectedNode}</span>}
-            {temporalUrl && (
-              <a className="btn btn-link" href={temporalUrl} target="_blank" rel="noopener noreferrer">
-                Open in Temporal
-              </a>
-            )}
-            <button
-              type="button"
-              className="btn btn-danger"
-              disabled={!canCancel || actionPending}
-              onClick={() => void handleCancel()}
-              aria-label="Cancel selected run"
-            >
-              {actionPending && canCancel ? "Canceling…" : "Cancel"}
-            </button>
-            <button
-              type="button"
-              className="btn"
-              disabled={!canRerun || actionPending}
-              onClick={() => void handleRerun()}
-              title={selectedNode ? `Rerun from ${selectedNode}` : "Select a graph node to rerun"}
-              aria-label={selectedNode ? `Rerun from ${selectedNode}` : "Rerun node"}
-            >
-              {actionPending && canRerun ? "Signaling…" : "Rerun node"}
-            </button>
+            <button type="button" className="btn btn-danger" disabled={!selectedWorkflowId || !isRunning || actionPending} onClick={() => void runCommand({ type: "cancel" })}>Cancel</button>
+            <button type="button" className="btn" disabled={!selectedWorkflowId || !selectedNode || actionPending} onClick={() => void runCommand({ type: "rerun_node", node: selectedNode })}>Rerun node</button>
           </div>
-
-          <PipelineGraph
-            graph={detail?.graph ?? null}
-            currentNode={detail?.summary.currentNode}
-            selectedNode={selectedNode}
-            onSelectNode={setSelectedNode}
-            loading={Boolean(selectedRunId) && detailLoading && !detail}
-          />
-
-          <RunDetailPanel
-            runId={selectedRunId}
-            data={panelData}
-            loading={panelLoading}
-            error={panelError}
-            empty={!selectedRunId}
-          />
-
-          {pendingClarification && (
-            <ClarificationPanel
-              request={pendingClarification}
-              onAnswer={handleClarificationAnswer}
-            />
-          )}
-
-          <OutcomeStrip
-            graph={detail?.graph ?? null}
-            events={detail?.events ?? []}
-            empty={!selectedRunId}
-          />
+          <PipelineGraph graph={detail?.graph ?? null} selectedNode={selectedNode} onSelectNode={setSelectedNode} loading={Boolean(selectedWorkflowId) && detailLoading && !detail} />
+          {pendingClarification && <ClarificationPanel request={pendingClarification} onAnswer={async (answer) => {
+            await runCommand({
+              type: "answer_clarification",
+              answer: {
+                schemaVersion: "clarification-answer.v1",
+                requestId: pendingClarification.requestId,
+                answerId: crypto.randomUUID(),
+                idempotencyKey: `${pendingClarification.requestId}:${pendingClarification.stateRevision}`,
+                responder: { type: "requester", id: "dashboard" },
+                body: answer,
+                stateRevision: pendingClarification.stateRevision,
+                createdAt: new Date().toISOString(),
+              },
+            });
+          }} />}
+          <OutcomeStrip execution={detail} empty={!selectedWorkflowId} />
         </main>
       </div>
     </div>
   );
 }
 
-function latestPendingClarification(events: RunEvent[]): ClarificationRequest | null {
-  const answered = new Set(
-    events
-      .filter((event) => event.type === "clarification.answered")
-      .map((event) => (event.payload as { requestId?: string } | null)?.requestId)
-      .filter((id): id is string => Boolean(id)),
-  );
+function latestPendingClarification(events: ExecutionEvent[]): ClarificationRequest | null {
+  const answered = new Set(events.filter((event) => event.type === "clarification.answered").map((event) => (event.payload as { requestId?: string } | null)?.requestId).filter((id): id is string => Boolean(id)));
   for (const event of [...events].reverse()) {
     if (event.type !== "clarification.requested") continue;
     const request = event.payload as ClarificationRequest;

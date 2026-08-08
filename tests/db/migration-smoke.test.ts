@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { beforeAll, afterAll, describe, expect, it } from "vitest";
 import { closeTestDatabase, getTestPool, isPostgresAvailable, rebuildTestDatabase } from "./test-database.js";
 
-const requiredTables = [
+const removedExecutionTables = [
   "factory_runs",
   "factory_events",
   "factory_artifacts",
@@ -25,9 +25,9 @@ const requiredTables = [
   "factory_messages",
   "factory_clarifications",
   "factory_claim_revisions",
-  "a2a_tasks",
-  "github_installations",
 ];
+
+const requiredTables = ["a2a_tasks", "github_installations"];
 
 describe("migration smoke test", () => {
   let available = false;
@@ -51,18 +51,18 @@ describe("migration smoke test", () => {
       "0002_bored_dark_beast.sql",
       "0003_greedy_kate_bishop.sql",
       "0004_github_installations.sql",
+      "0006_temporal_execution_authority_generated.sql",
     ].map((file) => readFile(new URL(`../../drizzle/${file}`, import.meta.url), "utf8")))).join("\n");
-    for (const table of requiredTables) {
-      expect(schema).toContain(table);
+    for (const table of removedExecutionTables) {
+      expect(schema).toContain(`DROP TABLE IF EXISTS "${table}"`);
     }
     expect(schema).not.toMatch(/CREATE TABLE IF NOT EXISTS runs\b/);
-    expect(schema).not.toMatch(/DROP TABLE/i);
 
     const pool = await getTestPool();
     const { rows } = await pool.query<{ tablename: string }>(
       "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename",
     );
-    expect(rows.map((row) => row.tablename)).toEqual(expect.arrayContaining(requiredTables));
+    expect(rows.map((row) => row.tablename)).toEqual(requiredTables);
     expect(rows.some((row) => row.tablename === "__drizzle_migrations")).toBe(false);
     expect((await pool.query("SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'drizzle'")).rowCount).toBe(1);
   });

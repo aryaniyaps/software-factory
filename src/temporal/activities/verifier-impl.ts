@@ -5,7 +5,6 @@ import { execFile as nodeExecFile } from "node:child_process";
 import { promisify } from "node:util";
 import { ProcessRunner } from "../../assurance/fitness/process-runner.js";
 import type { EvidenceStore } from "../../evidence/evidence-store.js";
-import type { FactoryProjection } from "../../db/factory-projection.js";
 import { filterScenariosForAcceptance, loadScenariosFromRoot } from "../../scenarios/loader.js";
 import { ScenarioRunner, trajectoryBodyHash } from "../../scenarios/runner.js";
 import { SCENARIO_POLICY_VERSION } from "../../scenarios/satisfaction.js";
@@ -16,7 +15,19 @@ const execFile = promisify(nodeExecFile);
 export interface VerifierActivityDependencies {
   readonly hiddenScenariosRoot: string;
   readonly evidenceStore?: EvidenceStore;
-  readonly projection?: FactoryProjection;
+  readonly projection?: {
+    recordScenarioRun(input: {
+      runId: string;
+      scenarioId: string;
+      attemptId: string;
+      status: string;
+      satisfaction?: number;
+      trajectoryUri?: string;
+      trajectorySha256?: string;
+      startedAt: string;
+      completedAt?: string;
+    }): Promise<void>;
+  };
   readonly prepareBaseline?: (input: BehavioralVerifyInput) => Promise<string>;
   readonly runner?: ScenarioRunner;
 }

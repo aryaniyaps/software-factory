@@ -1,8 +1,13 @@
-import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import type { Connection } from "@temporalio/client";
-import { temporal } from "@temporalio/proto";
+import { pathToFileURL } from "node:url";
+import { Connection } from "@temporalio/client";
+import temporalProto from "@temporalio/proto";
+import type { temporal as TemporalProto } from "@temporalio/proto";
+import Long from "long";
+
+const { temporal } = temporalProto;
+
+export const FACTORY_RETENTION_DAYS = 90;
 
 export const FACTORY_SEARCH_ATTRIBUTES = [
   ["FactoryRepository", "Keyword"],
@@ -10,6 +15,7 @@ export const FACTORY_SEARCH_ATTRIBUTES = [
   ["FactoryCurrentNode", "Keyword"],
   ["FactoryWorkflowKind", "Keyword"],
   ["FactoryRiskTier", "Keyword"],
+  ["FactoryExecutionContract", "Keyword"],
 ] as const;
 
 const KEYWORD_TYPE = temporal.api.enums.v1.IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD;
@@ -22,80 +28,57 @@ export async function registerFactorySearchAttributesWithConnection(
   connection: Connection,
   namespace = process.env.TEMPORAL_NAMESPACE ?? "default",
 ): Promise<void> {
+  let missing: readonly (typeof FACTORY_SEARCH_ATTRIBUTES)[number][] = FACTORY_SEARCH_ATTRIBUTES;
+  try {
+    const registered = await connection.operatorService.listSearchAttributes({ namespace });
+    missing = FACTORY_SEARCH_ATTRIBUTES.filter(([name]) => !(name in registered.customAttributes));
+  } catch (error) {
+    if (!/unimplemented/i.test(error instanceof Error ? error.message : String(error))) throw error;
+  }
+  if (missing.length === 0) return;
   try {
     await connection.operatorService.addSearchAttributes({
       namespace,
-      searchAttributes: Object.fromEntries(
-        FACTORY_SEARCH_ATTRIBUTES.map(([name]) => [name, KEYWORD_TYPE]),
-      ),
+      searchAttributes: Object.fromEntries(missing.map(([name]) => [name, KEYWORD_TYPE])),
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (isAlreadyRegistered(message)) return;
-    throw error;
+    if (!isAlreadyRegistered(error instanceof Error ? error.message : String(error))) throw error;
   }
 }
 
-function temporalCliArgs(namespace: string): string[] {
-  const args = [
-    "operator",
-    "search-attribute",
-    "create",
-    "--namespace",
+export function namespacePolicyRequest(
+  namespace: string,
+): TemporalProto.api.workflowservice.v1.IUpdateNamespaceRequest {
+  return {
     namespace,
-    "--yes",
-  ];
-  for (const [name, type] of FACTORY_SEARCH_ATTRIBUTES) {
-    args.push("--name", name, "--type", type);
-  }
-  return args;
+    config: {
+      workflowExecutionRetentionTtl: {
+        seconds: Long.fromNumber(FACTORY_RETENTION_DAYS * 24 * 60 * 60),
+      },
+    },
+  };
 }
 
-function resolveTemporalCommand(): { command: string; prefixArgs: string[] } {
-  const probe = spawnSync("temporal", ["--version"], { encoding: "utf8" });
-  if (probe.error === undefined && probe.status === 0) {
-    return { command: "temporal", prefixArgs: [] };
-  }
-
-  const composeFile = path.join(process.cwd(), "infra/compose/docker-compose.yml");
-  const dockerProbe = spawnSync(
-    "docker",
-    ["compose", "-f", composeFile, "exec", "-T", "temporal", "temporal", "--version"],
-    { encoding: "utf8" },
-  );
-  if (dockerProbe.error === undefined && dockerProbe.status === 0) {
-    return {
-      command: "docker",
-      prefixArgs: ["compose", "-f", composeFile, "exec", "-T", "temporal", "temporal"],
-    };
-  }
-
-  throw new Error(
-    "temporal CLI not found in PATH and Temporal compose service is unavailable. "
-    + "Install the Temporal CLI or run `npm run compose:up` first.",
-  );
+export async function enforceFactoryNamespacePolicyWithConnection(
+  connection: Connection,
+  namespace = process.env.TEMPORAL_NAMESPACE ?? "default",
+): Promise<void> {
+  await connection.workflowService.updateNamespace(namespacePolicyRequest(namespace));
 }
 
 export async function ensureFactorySearchAttributes(
   namespace = process.env.TEMPORAL_NAMESPACE ?? "default",
 ): Promise<void> {
-  const { command, prefixArgs } = resolveTemporalCommand();
-  const args = [...prefixArgs, ...temporalCliArgs(namespace)];
-  const result = spawnSync(command, args, {
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      TEMPORAL_CLI_ADDRESS: process.env.TEMPORAL_ADDRESS ?? "localhost:7233",
-    },
+  const connection = await Connection.connect({
+    address: process.env.TEMPORAL_ADDRESS ?? "localhost:7233",
   });
-
-  const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim();
-  if (result.status === 0 || isAlreadyRegistered(output)) {
-    console.log("Factory Temporal search attributes are registered");
-    return;
+  try {
+    await registerFactorySearchAttributesWithConnection(connection, namespace);
+    await enforceFactoryNamespacePolicyWithConnection(connection, namespace);
+  } finally {
+    await connection.close();
   }
-
-  throw new Error(output || `Failed to register Temporal search attributes (exit ${result.status ?? "unknown"})`);
+  console.log(`Factory Temporal search attributes are registered; retention is ${FACTORY_RETENTION_DAYS} days`);
 }
 
 const isMain = process.argv[1] !== undefined
