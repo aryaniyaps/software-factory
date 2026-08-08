@@ -45,11 +45,26 @@ describe("agent Activities", () => {
       sessions: {
         async recordTurn(input) {
           recorded.push(input);
+          return {
+            turn: {
+              schemaVersion: "agent-turn.v2" as const,
+              recordId: "turn:attempt:session-1:turn-0",
+              attemptId: "attempt",
+              sessionId: "session-1",
+              turnId: "turn-0",
+              turnIndex: 0,
+              role: "discovery_plan",
+              transcript: { objectId: "transcript", sha256: "a".repeat(64), uri: "memory://transcript", redaction: "secrets" as const },
+              startedAt: "2026-08-08T00:00:00.000Z",
+              completedAt: "2026-08-08T00:00:01.000Z",
+            },
+            toolCalls: [],
+          };
         },
       },
     });
 
-    await activities.runAgent({
+    const result = await activities.runAgent({
       run: {
         runId: "run",
         taskId: "task",
@@ -72,6 +87,10 @@ describe("agent Activities", () => {
       turnIndex: 0,
       prompt: expect.stringContaining("<task>"),
       output: expect.stringContaining('"role":"discovery_plan"'),
+    });
+    expect(result.execution?.turn).toMatchObject({
+      schemaVersion: "agent-turn.v2",
+      sessionId: "session-1",
     });
   });
 });

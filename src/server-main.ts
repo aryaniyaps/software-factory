@@ -1,10 +1,6 @@
 import { createApiServer } from "./api/server.js";
-import { createProductionApi } from "./api/production-api.js";
-import { createEvidenceService } from "./api/evidence-service.js";
-import { createOperationsService } from "./api/operations-service.js";
+import { createExecutionsService } from "./api/executions-service.js";
 import { closePool, createDatabase, createPool } from "./db/database.js";
-import { createFactoryRunStore } from "./db/factory-run-store.js";
-import { createEvidenceReadModel } from "./db/evidence-read-model.js";
 import { runMigrations } from "./db/migrate.js";
 import { createTemporalClient } from "./temporal/client.js";
 import { loadFactoryConfig } from "./config.js";
@@ -13,6 +9,7 @@ import { createA2AServer } from "./api/a2a-server.js";
 import { createA2ATaskStore } from "./db/a2a-task-store.js";
 import { createGitHubInstallationStore } from "./db/github-installation-store.js";
 import { createGitHubAppService, loadGitHubAppConfig } from "./integrations/github-app.js";
+import { createFilesystemObjectStore } from "./evidence/object-store.js";
 
 export async function startServer(): Promise<void> {
   const config = loadFactoryConfig();
@@ -27,29 +24,14 @@ export async function startServer(): Promise<void> {
   const github = githubConfig ? createGitHubAppService(githubConfig, githubInstallations) : undefined;
   if (github) await github.bootstrapFromEnv();
   const temporal = await createTemporalClient();
-  const store = createFactoryRunStore(db);
-  const evidenceService = createEvidenceService({
-    readModel: createEvidenceReadModel(db),
-    config: {
-      retentionDays: config.evidenceRetentionDays,
-      signedUrls: {
-        secret: config.signedUrlSecret,
-        ttlSeconds: config.signedUrlTtlSeconds,
-        baseUrl: config.publicBaseUrl,
-      },
-    },
+  const executions = createExecutionsService({
+    workflowClient: temporal,
+    objectStore: createFilesystemObjectStore(
+      process.env.EVIDENCE_OBJECT_STORE_ROOT ?? "/tmp/software-factory-evidence",
+    ),
   });
-  const operationsService = createOperationsService({ workflowClient: temporal });
-  const productionStore = createProductionApi({ store, workflowClient: temporal });
   const server = createApiServer({
-    store: productionStore,
-    evidenceService,
-    operationsService,
-    signedUrls: {
-      secret: config.signedUrlSecret,
-      ttlSeconds: config.signedUrlTtlSeconds,
-      baseUrl: config.publicBaseUrl,
-    },
+    executions,
     apiToken: config.apiToken,
     github,
     githubWebhookSecret: githubConfig?.webhookSecret,
@@ -61,8 +43,7 @@ export async function startServer(): Promise<void> {
     throw new Error("FACTORY_A2A_TOKEN or FACTORY_API_TOKEN is required to start the A2A endpoint");
   }
   const a2aServer = createA2AServer({
-    store: productionStore,
-    operations: operationsService,
+    executions,
     publicUrl: process.env.FACTORY_A2A_PUBLIC_URL ?? `http://127.0.0.1:${a2aPort}`,
     apiToken: a2aToken,
     taskStore: createA2ATaskStore(db),

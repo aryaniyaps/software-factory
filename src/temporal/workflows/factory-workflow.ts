@@ -10,12 +10,22 @@ import {
   setHandler,
   upsertSearchAttributes,
   uuid4,
+  workflowInfo,
 } from "@temporalio/workflow";
 import type * as activities from "../activities/types.js";
 import type { AgentActivityResult } from "../activities/types.js";
 import type { AgentOutput } from "../../contracts/nodes.js";
 import type { ClarificationAnswer, ClarificationRequest } from "../../contracts/clarification.js";
 import type { FactoryNodeName } from "../../contracts/nodes.js";
+import {
+  appendExecutionRecord,
+  createExecutionLedger,
+  executionView,
+  FACTORY_EXECUTION_GRAPH_V2,
+  updateExecutionState,
+  type FactoryExecutionViewV2,
+  type ExecutionRecord,
+} from "../../contracts/execution.js";
 import { DEFAULT_WORKFLOW_BUDGET } from "../../policy/retry-policy.js";
 import { assessMaintainability, DEFAULT_MAINTAINABILITY_POLICY } from "../../assurance/maintainability/policy.js";
 import { assessCriticReports, stripImplementerNarrative } from "../../assurance/maintainability/critic.js";
@@ -68,6 +78,7 @@ export const rerunNodeSignal = defineSignal<[FactoryNodeName]>("rerunNode");
 export const rollbackReleaseSignal = defineSignal("rollbackRelease");
 export const answerClarificationSignal = defineSignal<[ClarificationAnswer]>("answerClarification");
 export const factoryStatusQuery = defineQuery<FactoryWorkflowState>("factoryStatus");
+export const factoryExecutionViewQuery = defineQuery<FactoryExecutionViewV2 | null>("factoryExecutionView");
 
 function agentSucceeded(output: { status: "succeeded" | "failed" | "escalate_to_human" | "abstained"; summary: string }): boolean {
   return output.status === "succeeded";
@@ -91,12 +102,16 @@ function agentFailureName(status: "failed" | "escalate_to_human"): string {
 }
 
 export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): Promise<FactoryWorkflowState> {
+  const workflow = workflowInfo();
+  const usesExecutionContract = (input.protocolVersion ?? 1) >= 2;
+  const executionStartedAt = new Date().toISOString();
   const continuation = input.continuation;
   const state: {
     schemaVersion: "factory-run.v1";
     runId: string;
     status: FactoryWorkflowState["status"];
     nodeAttempts: FactoryWorkflowState["nodeAttempts"];
+    executionRecords: ExecutionRecord[];
     currentNode?: FactoryNodeName;
     failedNode?: FactoryNodeName;
     pendingClarification?: ClarificationRequest;
@@ -107,6 +122,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     runId: input.runId,
     status: "running",
     nodeAttempts: continuation?.nodeAttempts ?? [],
+    executionRecords: continuation?.executionRecords ? [...continuation.executionRecords] : [],
     continuationGeneration: continuation?.continuationGeneration ?? 0,
     budget: continuation?.budget ?? { ...DEFAULT_WORKFLOW_BUDGET },
   };
@@ -133,6 +149,16 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
   };
 
   const setStatus = (status: FactoryWorkflowState["status"]) => {
+    if (state.status !== status) {
+      const occurredAt = new Date().toISOString();
+      state.executionRecords.push({
+        schemaVersion: "execution-event.v2",
+        recordId: `status:${status}:${state.executionRecords.length}`,
+        type: `execution.${status}`,
+        occurredAt,
+        payload: { status },
+      });
+    }
     state.status = status;
     syncSearchAttributes({ status });
   };
@@ -148,7 +174,11 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
   let pendingAnswer: ClarificationAnswer | undefined;
   setHandler(cancelFactorySignal, () => { cancelled = true; });
   setHandler(rollbackReleaseSignal, () => { pendingRollback = true; });
-  setHandler(rerunNodeSignal, (node) => { pendingRerun = node; });
+  setHandler(rerunNodeSignal, (node) => {
+    if (FACTORY_EXECUTION_GRAPH_V2.nodes.some((definition) => definition.id === node)) {
+      pendingRerun = node;
+    }
+  });
   setHandler(answerClarificationSignal, (answer) => {
     if (
       state.pendingClarification?.requestId === answer.requestId
@@ -169,6 +199,40 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     budget: toBudgetState(state.budget),
     continuationGeneration: state.continuationGeneration,
   }));
+  setHandler(factoryExecutionViewQuery, (): FactoryExecutionViewV2 | null => {
+    if (input.protocolVersion !== 3) return null;
+    let ledger = createExecutionLedger({
+      workflowId: workflow.workflowId,
+      runId: input.runId,
+      taskId: input.taskId,
+      repository: input.repository,
+      prompt: input.description ?? input.title ?? input.taskId,
+      startedAt: executionStartedAt,
+    });
+    ledger = updateExecutionState(ledger, {
+      status: state.status,
+      currentNode: state.currentNode ?? null,
+      failedNode: state.failedNode ?? null,
+      updatedAt: state.nodeAttempts.at(-1)?.completedAt ?? executionStartedAt,
+    });
+    for (const attempt of state.nodeAttempts) {
+      ledger = appendExecutionRecord(ledger, {
+        schemaVersion: "node-attempt.v2",
+        recordId: `attempt:${attempt.attemptId}`,
+        nodeId: attempt.node,
+        attemptId: attempt.attemptId,
+        status: attempt.status,
+        startedAt: attempt.startedAt ?? executionStartedAt,
+        completedAt: attempt.completedAt,
+        failureCode: attempt.failureCode,
+        evidenceRefs: attempt.evidenceRefs ?? [],
+      });
+    }
+    for (const record of state.executionRecords) {
+      ledger = appendExecutionRecord(ledger, record);
+    }
+    return executionView(ledger);
+  });
 
   const checkCancelled = () => {
     if (cancelled) {
@@ -185,7 +249,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
   const maybeContinueAsNew = async (worktree?: { path: string; branch: string }, agentOutput?: object) => {
     // V2 requires a stage checkpoint before history rollover; never restart it from
     // the beginning and duplicate completed agent/tool side effects.
-    if (input.protocolVersion === 2) return;
+    if (usesExecutionContract) return;
     if (
       state.nodeAttempts.length - attemptsAtGenerationStart
       < MAX_NODE_ATTEMPTS_BEFORE_CONTINUE_AS_NEW
@@ -194,6 +258,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
       ...input,
       continuation: {
         nodeAttempts: state.nodeAttempts,
+        executionRecords: state.executionRecords,
         budget: state.budget,
         continuationGeneration: state.continuationGeneration + 1,
         worktree,
@@ -209,11 +274,20 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     }
   };
 
+  const captureAgentExecution = (result: AgentActivityResult) => {
+    if (!result.execution) return;
+    const next = [result.execution.turn, ...result.execution.toolCalls];
+    for (const record of next) {
+      const index = state.executionRecords.findIndex((current) => current.recordId === record.recordId);
+      if (index >= 0) state.executionRecords[index] = record;
+      else state.executionRecords.push(record);
+    }
+  };
+
   const failRun = async (failedNode: FactoryNodeName, worktreePath?: string): Promise<FactoryWorkflowState> => {
     setStatus("failed");
     state.failedNode = failedNode;
     if (worktreePath) await controlActivity.removeWorktree(worktreePath);
-    await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "failed", runId: input.runId });
     throw ApplicationFailure.nonRetryable(`factory failed at ${failedNode}`, "Failed", { failedNode });
   };
 
@@ -221,7 +295,6 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     await CancellationScope.nonCancellable(async () => {
       if (state.status !== "cancelled") setStatus("cancelled");
       if (activeWorktreePath) await controlActivity.removeWorktree(activeWorktreePath);
-      await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "cancelled", runId: input.runId });
     });
   };
 
@@ -296,7 +369,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     checkCancelled();
     await maybeContinueAsNew(worktree, previous);
 
-    const agentRoles = input.protocolVersion === 2
+    const agentRoles = usesExecutionContract
       ? (["discovery_plan", "implement"] as const)
       : (["scout", "plan", "implement"] as const);
     for (const role of agentRoles) {
@@ -309,7 +382,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
         | undefined;
       let output: AgentOutput | undefined;
       for (let clarificationRound = 0; clarificationRound <= 2; clarificationRound += 1) {
-        const agentInput = input.protocolVersion === 2
+        const agentInput = usesExecutionContract
           ? {
             schemaVersion: "node-context.v1",
             stateRevision: predecessors.length,
@@ -339,7 +412,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
               role,
               input: agentInput,
             });
-            if (result.output.status === "failed" || (input.protocolVersion !== 2 && !agentSucceeded(result.output))) {
+            if (result.output.status === "failed" || (!usesExecutionContract && !agentSucceeded(result.output))) {
               const failedOutput = result.output;
               const error = new Error(`${role} agent ${failedOutput.status}: ${failedOutput.summary}`);
               error.name = agentFailureName(failedOutput.status as "failed" | "escalate_to_human");
@@ -352,7 +425,9 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
         state.budget = agentRun.budget;
         recordAttempts(agentRun.attemptRefs);
         if (agentRun.failed) return await failRun(role, worktree.path);
-        output = (agentRun.output as AgentActivityResult).output;
+        const agentResult = agentRun.output as AgentActivityResult;
+        captureAgentExecution(agentResult);
+        output = agentResult.output;
         if (output.status === "succeeded") break;
         if (clarificationRound === 2) return await failRun(role, worktree.path);
 
@@ -373,10 +448,11 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
         };
         state.pendingClarification = request;
         predecessors.push(output);
-        await controlActivity.recordFactoryEvent({
-          runId: input.runId,
-          eventId: `clarification-requested:${request.requestId}`,
+        state.executionRecords.push({
+          schemaVersion: "execution-event.v2",
+          recordId: `clarification-requested:${request.requestId}`,
           type: "clarification.requested",
+          occurredAt: request.createdAt,
           payload: request,
         });
 
@@ -410,7 +486,9 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
           state.budget = peerRun.budget;
           recordAttempts(peerRun.attemptRefs);
           if (peerRun.failed) return await failRun(peerRole, worktree.path);
-          const peerOutput = (peerRun.output as AgentActivityResult).output;
+          const peerResult = peerRun.output as AgentActivityResult;
+          captureAgentExecution(peerResult);
+          const peerOutput = peerResult.output;
           predecessors.push(peerOutput);
           pendingAnswer = {
             schemaVersion: "clarification-answer.v1",
@@ -425,37 +503,26 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
           };
         } else {
           setStatus("input_required");
-          await controlActivity.updateTaskStatus({
-            taskId: input.taskId,
-            status: "input_required",
-            runId: input.runId,
-            currentNode: role,
-          });
           const answered = await condition(() => pendingAnswer !== undefined || cancelled, "24 hours");
           checkCancelled();
           if (!answered || !pendingAnswer) return await failRun(role, worktree.path);
         }
 
         clarification = { request, answer: pendingAnswer! };
-        await controlActivity.recordFactoryEvent({
-          runId: input.runId,
-          eventId: `clarification-answered:${pendingAnswer!.answerId}`,
+        state.executionRecords.push({
+          schemaVersion: "execution-event.v2",
+          recordId: `clarification-answered:${pendingAnswer!.answerId}`,
           type: "clarification.answered",
+          occurredAt: pendingAnswer!.createdAt,
           payload: pendingAnswer!,
         });
         pendingAnswer = undefined;
         state.pendingClarification = undefined;
         setStatus("running");
-        await controlActivity.updateTaskStatus({
-          taskId: input.taskId,
-          status: "running",
-          runId: input.runId,
-          currentNode: role,
-        });
       }
       if (!output || output.status !== "succeeded") return await failRun(role, worktree.path);
-      if (input.protocolVersion === 2) predecessors.push(output);
-      previous = input.protocolVersion === 2
+      if (usesExecutionContract) predecessors.push(output);
+      previous = usesExecutionContract
         ? { predecessors: [...predecessors] }
         : output.data;
       checkCancelled();
@@ -470,6 +537,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
       runChecks: () => buildActivity.runChecks({ run: input, worktree: worktree! }),
       runRepair: async (_repairAttempt, attemptId) => {
         const repair = await agentActivity.runAgent({ run: { ...input, attemptId }, worktree: worktree!, role: "repair", input: { previous } });
+        captureAgentExecution(repair);
         if (!agentSucceeded(repair.output)) {
           const failedOutput = repair.output;
           const error = new Error(`repair agent ${failedOutput.status}: ${failedOutput.summary}`);
@@ -520,6 +588,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
             role: "maintainability_critic",
             input: { evidence: criticEvidence, previous },
           });
+          captureAgentExecution(critic);
           if (!maintainabilityCriticCompleted(critic.output)) {
             const failedOutput = critic.output;
             const error = new Error(`maintainability critic ${failedOutput.status}: ${failedOutput.summary}`);
@@ -548,6 +617,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
           role: "repair",
           input: { mode: "maintainability_refactor", scope, attempt, previous },
         });
+        captureAgentExecution(repair);
         if (!agentSucceeded(repair.output)) {
           const failedOutput = repair.output;
           const error = new Error(`maintainability repair ${failedOutput.status}: ${failedOutput.summary}`);
@@ -606,6 +676,7 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
       maxAttempts: 2,
       execute: async (_attemptNumber, attemptId) => {
         const review = await agentActivity.runAgent({ run: { ...input, attemptId }, worktree: worktree!, role: "review", input: previous });
+        captureAgentExecution(review);
         if (!reviewGatePassed(review.output, { advisory: Boolean(input.skipBuildRelease) })) {
           const failedOutput = review.output;
           const error = new Error(`review gate failed: ${failedOutput.summary}`);
@@ -623,7 +694,6 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
 
     if (input.skipBuildRelease) {
       if (worktree.path) await controlActivity.removeWorktree(worktree.path);
-      await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "succeeded", runId: input.runId });
       setStatus("succeeded");
       setCurrentNode(undefined);
       return buildFinalState(state);
@@ -660,13 +730,11 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
       setStatus("rolled_back");
       state.failedNode = "release_controller";
       if (worktree.path) await controlActivity.removeWorktree(worktree.path);
-      await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "rolled_back", runId: input.runId });
       return buildFinalState(state);
     }
     if (release.status !== "promoted") return await failRun("release_controller", worktree.path);
     checkCancelled();
     await controlActivity.removeWorktree(worktree.path);
-    await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "succeeded", runId: input.runId });
     setStatus("succeeded");
     setCurrentNode(undefined);
     return buildFinalState(state);
@@ -678,7 +746,6 @@ export async function factoryWorkflow(input: FactoryWorkflowContinuationInput): 
     if (state.status === "rolled_back") {
       await CancellationScope.nonCancellable(async () => {
         if (activeWorktreePath) await controlActivity.removeWorktree(activeWorktreePath);
-        await controlActivity.updateTaskStatus({ taskId: input.taskId, status: "rolled_back", runId: input.runId });
       });
       throw ApplicationFailure.nonRetryable("release rollback requested", "RollbackRequested");
     }
@@ -691,6 +758,7 @@ function buildFinalState(state: {
   runId: string;
   status: FactoryWorkflowState["status"];
   nodeAttempts: FactoryWorkflowState["nodeAttempts"];
+  executionRecords: ExecutionRecord[];
   currentNode?: FactoryNodeName;
   failedNode?: FactoryNodeName;
   pendingClarification?: ClarificationRequest;

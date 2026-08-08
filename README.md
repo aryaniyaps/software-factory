@@ -1,6 +1,6 @@
 # Software Factory
 
-A production-only, graph-oriented software factory. Temporal orchestrates workflow state; PostgreSQL stores projections and evidence; Crabbox isolates repository, agent, test, and build execution. There is no host-process or in-memory fallback for production paths.
+A production-only, graph-oriented software factory. Temporal is the sole authority for execution state, graph topology, node attempts, agent turns, tool calls, events, and outcomes. Large redacted bodies live in the object store and are referenced by hashes in Workflow state. Application PostgreSQL stores only GitHub installations and A2A task mappings; Temporal's private PostgreSQL is solely its persistence implementation. Crabbox isolates repository, agent, test, and build execution.
 
 ## Factory assembly line
 
@@ -25,8 +25,7 @@ flowchart LR
 | `prepare_repository` | deterministic | control | Clone or refresh the target repository into the cache | — | clone/fetch failure |
 | `create_worktree` | deterministic | control | Create an isolated git worktree for this run | — | worktree failure |
 | `security_scan` | deterministic | control | Scan the worktree for policy/security violations | — | reject or budget exhausted → fail |
-| `scout` | agent | agent | Map repository reality without writing code | `FACTORY_MODEL_SCOUT` / default | escalate / fail |
-| `plan` | agent | agent | Produce an actionable plan and acceptance checks | `FACTORY_MODEL_PLAN` / default | escalate / fail |
+| `discovery_plan` | agent | agent | Map repository reality and produce an evidence-backed plan | `FACTORY_MODEL_PLAN` / default | escalate / fail |
 | `implement` | agent | agent | Apply the plan in the worktree using TDD | `FACTORY_MODEL_IMPLEMENT` / default | fail |
 | `deterministic_checks` | deterministic | build | Run lint, typecheck, unit tests, and other gates | — | fail → repair loop |
 | `repair` | agent | agent | Fix failing checks or scoped maintainability debt | `FACTORY_MODEL_REPAIR` / default | fail after repair budget |
@@ -81,7 +80,7 @@ Model selection uses `FACTORY_MODEL` (and optional `FACTORY_MODEL_<ROLE>` overri
 # 1. Install Crabbox and verify it works
 crabbox --version
 
-# 2. Start local dependencies (Postgres, Temporal, Hindsight)
+# 2. Start local dependencies (application Postgres, Temporal, Hindsight)
 npm run compose:up
 
 # 3. Configure environment
@@ -91,7 +90,7 @@ cp .env.example .env
 # 4. Install, migrate, build
 npm install
 npm run db:migrate
-npm run temporal:search-attributes   # after compose:up — registers factory search attributes
+npm run temporal:search-attributes   # registers search attributes and enforces 90-day retention
 npm run build
 
 # 5. Bootstrap Pi role resources (needs writable PI_RESOURCE_ROOT)
@@ -110,7 +109,7 @@ The API and worker run `npm run db:migrate` automatically on startup.
 
 | Variable | Purpose |
 |----------|---------|
-| `DATABASE_URL` | Factory projection database |
+| `DATABASE_URL` | Application metadata database (GitHub installations + A2A tasks only) |
 | `TEMPORAL_ADDRESS` | Temporal gRPC (`localhost:7233`) |
 | `FACTORY_MODEL_PROVIDER` + `FACTORY_MODEL` | Pi provider + default model (e.g. `openai-codex` / `gpt-5.6-luna`) |
 | `FACTORY_ORGANIZATION` + `FACTORY_PROJECT` | Hindsight memory bank scope |
@@ -148,7 +147,7 @@ Resolution lives in [`src/agents/model-resolver.ts`](src/agents/model-resolver.t
 
 ## Local dashboard
 
-A Vite + React dashboard lives at `apps/dashboard/` for local run monitoring. Connect a GitHub App installation, explicitly select a repository from the connected account, then describe the task in one free-form prompt. Title and acceptance context are inferred. The dashboard shows the unified discovery-plan node and lets an operator answer clarification requests before the workflow resumes.
+A Vite + React dashboard lives at `apps/dashboard/` for local execution monitoring. It queries Temporal through `GET /executions/:workflowId` and renders the graph returned by the Workflow Query; it has no local copy of the topology. Connect a GitHub App installation, explicitly select a repository, then describe the task in one free-form prompt.
 
 ```bash
 # Terminal 1 — infrastructure + API
@@ -182,17 +181,17 @@ Internal factory nodes do not run A2A servers. They communicate through
 Temporal-routed clarification turns, an append-only conversation ledger, and
 versioned evidence so retries and replanning remain deterministic.
 
-## Start a run
+## Start an execution
 
 ```bash
-curl -sS -X POST http://127.0.0.1:8787/tasks \
+curl -sS -X POST http://127.0.0.1:8787/executions \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <token>' \
   -d '{
     "repository": "org/repo",
     "prompt": "Add feature X with concrete acceptance criteria and scope for the change."
   }'
-# → { "id": "<runUuid>" }
+# → { "workflowId": "factory-<uuid>", "runId": "<uuid>" }
 ```
 
 Repository must be explicitly provided as `owner/repo` or an HTTPS clone URL accessible to the connected GitHub App. Prompt-only task creation is no longer supported.
@@ -204,13 +203,12 @@ If `FACTORY_API_TOKEN` is set, include `Authorization: Bearer <token>` on write 
 | Action | How |
 |--------|-----|
 | Temporal UI | http://localhost:8080 |
-| Run status | `GET /runs/:id` |
-| Run events | `GET /runs/:id/events` |
-| Cancel | `POST /runs/:id/cancel` |
-| Evidence graph | `GET /factory/runs/:runId/graph` |
-| Gates / scenarios / probes | `GET /factory/runs/:runId/gates` etc. |
-| Rerun node | `POST /factory/runs/:runId/rerun` with `{ "node": "implement" }` |
-| Rollback release | `POST /factory/runs/:runId/rollback` |
+| List executions | `GET /executions` |
+| Execution graph and state | `GET /executions/:workflowId` |
+| Cancel | `POST /executions/:workflowId/commands` with `{ "type": "cancel" }` |
+| Rerun node | same command endpoint with `{ "type": "rerun_node", "node": "implement" }` |
+| Rollback release | same command endpoint with `{ "type": "rollback" }` |
+| Referenced object body | `GET /executions/:workflowId/objects/:encodedObjectId` |
 | Traces (optional) | `npm run compose:obs` → Phoenix at http://localhost:6006 |
 
 Compose profiles:
@@ -276,7 +274,6 @@ npm run compose:down
 | Variable | Default |
 |----------|---------|
 | `EVIDENCE_OBJECT_STORE_ROOT` | `/tmp/software-factory-evidence` |
-| `EVIDENCE_MAX_INLINE_BYTES` | `0` |
 | `HINDSIGHT_BASE_URL` | `http://localhost:8888` |
 | `HINDSIGHT_API_KEY` | — |
 | `HINDSIGHT_TEMPLATE_PATH` | `infra/hindsight/factory-bank-template.json` |
@@ -284,9 +281,9 @@ npm run compose:down
 
 ## Database, schema, and tests
 
-Schema changes: edit `src/db/schema.ts` → `npm run db:generate` → commit `drizzle/` → `npm run db:migrate`.
+The application schema intentionally contains only `github_installations` and `a2a_tasks`. Execution schema changes belong in versioned Temporal Workflow contracts, not Drizzle.
 
-After a destructive schema cutover, reset only the factory projection database (not Temporal's separate Postgres):
+To reset application metadata, reset only the application Postgres volume (not Temporal's separate Postgres):
 
 ```bash
 docker compose -f infra/compose/docker-compose.yml down -v postgres
@@ -313,11 +310,11 @@ npm run factory:contract:check   # product-graph contract validation
 
 ## Services
 
-All local dependencies are in [`infra/compose/docker-compose.yml`](infra/compose/docker-compose.yml). Temporal persistence uses a separate Postgres instance from the factory projection database. Phoenix observability is in [`infra/observability/docker-compose.phoenix.yml`](infra/observability/docker-compose.phoenix.yml) (profile `observability`).
+All local dependencies are in [`infra/compose/docker-compose.yml`](infra/compose/docker-compose.yml). Temporal persistence uses a private Postgres instance separate from the application metadata database. It is not an application read model and must not be queried by application code. Phoenix observability is in [`infra/observability/docker-compose.phoenix.yml`](infra/observability/docker-compose.phoenix.yml) (profile `observability`).
 
 | Service | URL |
 |---------|-----|
-| Factory PostgreSQL | `localhost:5432` |
+| Application metadata PostgreSQL | `localhost:5432` |
 | Temporal gRPC | `localhost:7233` |
 | Temporal UI | http://localhost:8080 |
 | Hindsight | http://localhost:8888 |
@@ -330,8 +327,9 @@ The API requires PostgreSQL and Temporal. The worker additionally requires Crabb
 
 | Concern | Owner |
 |---------|-------|
-| PostgreSQL schema, migrations, typed queries | Drizzle (`src/db/schema.ts`, `drizzle/`, `npm run db:generate` / `db:migrate`) |
-| Workflow orchestration | Temporal |
+| GitHub installations and A2A task mappings | Drizzle (`src/db/schema.ts`) |
+| Execution state, graph, attempts, calls, events, outcome | Temporal Workflow state + Query |
+| Large redacted transcripts/tool bodies | Object store, content-addressed and referenced by Temporal |
 | Agent memory (recall/reflect/retain) | `@vectorize-io/hindsight-client` |
 | Context7 research | `@modelcontextprotocol/client` (Streamable HTTP transport) |
 | GitHub Projects | `@octokit/graphql` |

@@ -9,6 +9,7 @@ import type { FactoryWorkflowInput } from "../../src/temporal/client.js";
 import {
   answerClarificationSignal,
   cancelFactorySignal,
+  factoryExecutionViewQuery,
   factoryStatusQuery,
   factoryWorkflow,
   rerunNodeSignal,
@@ -196,7 +197,30 @@ function createActivities(options: MockOptions = {}) {
           };
         }
       }
-      return { sessionId: role, output: agentOutput(role) };
+      return {
+        sessionId: role,
+        output: agentOutput(role),
+        execution: {
+          turn: {
+            schemaVersion: "agent-turn.v2" as const,
+            recordId: `turn:${run.attemptId}:${role}:turn-0`,
+            attemptId: run.attemptId ?? `${role}:1`,
+            sessionId: role,
+            turnId: "turn-0",
+            turnIndex: 0,
+            role,
+            transcript: {
+              objectId: `${role}/turn-0.json`,
+              sha256: "a".repeat(64),
+              uri: `memory://${role}/turn-0.json`,
+              redaction: "secrets" as const,
+            },
+            startedAt: "2026-08-08T00:00:00.000Z",
+            completedAt: "2026-08-08T00:00:01.000Z",
+          },
+          toolCalls: [],
+        },
+      };
     },
     runChecks: async () => {
       calls.push("deterministic_checks");
@@ -234,12 +258,6 @@ function createActivities(options: MockOptions = {}) {
       return { image: "registry/app", digest: release.digest };
     },
     ...release,
-    updateTaskStatus: async ({ status }: { status: string }) => {
-      calls.push(`status:${status}`);
-    },
-    recordFactoryEvent: async ({ type }: { type: string }) => {
-      calls.push(`event:${type}`);
-    },
   };
 
   return { activities, calls, agentInvocations };
@@ -252,8 +270,6 @@ function queueScopedActivities(fullActivities: ReturnType<typeof createActivitie
       createWorktree: fullActivities.createWorktree,
       removeWorktree: fullActivities.removeWorktree,
       securityScan: fullActivities.securityScan,
-      updateTaskStatus: fullActivities.updateTaskStatus,
-      recordFactoryEvent: fullActivities.recordFactoryEvent,
     },
     [TASK_QUEUES.agent]: {
       runAgent: fullActivities.runAgent,
@@ -285,7 +301,7 @@ async function runFactoryTest(
     signal?: "cancel" | "rerun" | "answer";
     continuation?: FactoryWorkflowContinuationInput["continuation"];
     queueScoped?: boolean;
-    protocolVersion?: 2;
+    protocolVersion?: 2 | 3;
   },
 ) {
   const testEnv = await TestWorkflowEnvironment.createTimeSkipping();
@@ -335,7 +351,8 @@ async function runFactoryTest(
       });
     }
     const result = await handle.result();
-    return { result, calls, agentInvocations, threw: false as const };
+    const executionView = await handle.query(factoryExecutionViewQuery);
+    return { result, executionView, calls, agentInvocations, threw: false as const };
   } catch (error) {
     return { error, calls, agentInvocations, threw: true as const };
   } finally {
@@ -375,8 +392,8 @@ describe.sequential("factory workflow policy execution", () => {
     expect(result!.budget?.agentAttemptsUsed).toBeGreaterThan(0);
   }, temporalTimeoutMs);
 
-  it("uses one discovery-plan node and preserves its complete output for implementation in v2", async () => {
-    const { result, agentInvocations, threw } = await runFactoryTest({}, { protocolVersion: 2 });
+  it("uses one discovery-plan node and preserves its complete output for implementation in v3", async () => {
+    const { result, executionView, agentInvocations, threw } = await runFactoryTest({}, { protocolVersion: 3 });
     expect(threw).toBe(false);
     expect(result!.completedNodes).toContain("discovery_plan");
     expect(agentInvocations.slice(0, 2).map(({ role }) => role)).toEqual([
@@ -385,6 +402,15 @@ describe.sequential("factory workflow policy execution", () => {
     ]);
     expect(agentInvocations.map(({ role }) => role)).not.toContain("scout");
     expect(agentInvocations.map(({ role }) => role)).not.toContain("plan");
+    expect(executionView!.schemaVersion).toBe("factory-execution-view.v2");
+    expect(executionView!.workflowId).toMatch(/^factory-run-test-/);
+    expect(executionView!.graph.nodes.map((node) => node.id)).toContain("discovery_plan");
+    expect(executionView!.graph.edges).toContainEqual(expect.objectContaining({
+      source: "discovery_plan",
+      target: "implement",
+    }));
+    expect(executionView!.attempts.some((attempt) => attempt.nodeId === "discovery_plan")).toBe(true);
+    expect(executionView!.turns.some((turn) => turn.role === "discovery_plan")).toBe(true);
     expect(agentInvocations[1]?.input).toMatchObject({
       schemaVersion: "node-context.v1",
       predecessors: [{
@@ -428,9 +454,6 @@ describe.sequential("factory workflow policy execution", () => {
       { protocolVersion: 2, signal: "answer" },
     );
     expect(threw).toBe(false);
-    expect(calls).toContain("status:input_required");
-    expect(calls).toContain("event:clarification.requested");
-    expect(calls).toContain("event:clarification.answered");
     expect(agentInvocations.filter(({ role }) => role === "implement")).toHaveLength(2);
   }, temporalTimeoutMs);
 
@@ -535,7 +558,7 @@ describe.sequential("factory workflow policy execution", () => {
       "agent:review",
       "build_artifact",
       "preview_deploy",
-      "status:succeeded",
+      "cleanup:/worktrees/run-test",
     ];
     let previousIndex = -1;
     for (const marker of stageMarkers) {

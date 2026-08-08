@@ -1,6 +1,6 @@
 ---
 id: REQ-EVIDENCE-SPINE
-title: Append-only evidence persistence
+title: Content-addressed execution evidence
 acceptance:
   - AC-EVIDENCE-HASHING
 blueprints:
@@ -8,12 +8,11 @@ blueprints:
 traces:
   - src/evidence/**
   - src/db/schema.ts
-  - src/db/factory-projection.ts
-  - drizzle/0000_soft_otto_octavius.sql
+  - src/contracts/execution.ts
 ---
 
-Factory runs must persist append-only evidence metadata and content-addressed blobs.
+Factory executions must place large evidence bodies in content-addressed object storage and keep their hash-verified references in Temporal Workflow state.
 
-## Schema ownership
+## Authority boundary
 
-Evidence projection tables are defined in `src/db/schema.ts` and applied through generated Drizzle migrations under `drizzle/`. Schema changes require `npm run db:generate`, review of the generated SQL, and `npm run db:migrate` against a reset factory database during cutovers.
+PostgreSQL must not contain execution evidence metadata or indexes. Objects may be returned only when the requested object identifier appears in the queried execution view.

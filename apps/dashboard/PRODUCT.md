@@ -16,7 +16,7 @@ Local-only operations console for the Software Factory execution pipeline. Not a
 |------|---------|
 | Header | Brand label "Software Factory" + mode subtitle |
 | Left sidebar | Create-task form; scrollable run list (status, current node, time) |
-| Main canvas | Fixed left-to-right React Flow pipeline (factory execution graph) |
+| Main canvas | React Flow graph supplied by the Temporal Workflow Query |
 | Toolbar | Run id, status, cancel / rerun actions |
 | Footer strip | Outcome explanation + recent events |
 
@@ -30,7 +30,8 @@ Local-only operations console for the Software Factory execution pipeline. Not a
 
 ## Interactions
 
-- Poll API every 1–2s; pause when browser tab hidden
+- Poll `/executions/:workflowId` every 1–2s; pause when browser tab hidden
+- Render queried nodes and edges without a dashboard-owned topology
 - Click run in list to focus; click graph node to select rerun target
 - Cancel signals running workflow; Rerun requires selected node
 

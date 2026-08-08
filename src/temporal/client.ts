@@ -19,7 +19,7 @@ export interface FactoryWorkflowInput {
   attemptId?: string;
   organization?: string;
   project?: string;
-  protocolVersion?: 2;
+  protocolVersion?: 2 | 3;
   /** Skip container build and release when local deploy prerequisites are absent. */
   skipBuildRelease?: boolean;
 }
@@ -41,6 +41,7 @@ export interface WorkflowClientLike {
   workflow: {
     start(workflow: unknown, options: WorkflowStartLikeOptions): Promise<unknown>;
     getHandle?(workflowId: string): WorkflowHandleLike;
+    list?(options?: { query?: string }): AsyncIterable<{ workflowId: string }>;
   };
 }
 
@@ -57,7 +58,6 @@ export async function startFactoryWorkflow(client: WorkflowClientLike, input: Fa
 }
 
 export async function startFactoryWorkflowV2(client: WorkflowClientLike, input: FactoryWorkflowInput): Promise<unknown> {
-  const baseUrl = dashboardBaseUrl();
   return client.workflow.start("factoryWorkflow", {
     workflowId: `factory-${input.runId}`,
     taskQueue: TASK_QUEUES.control,
@@ -71,7 +71,27 @@ export async function startFactoryWorkflowV2(client: WorkflowClientLike, input: 
     memo: {
       title: input.title,
       description: input.description,
-      dashboardUrl: `${baseUrl}/runs/${input.runId}`,
+    },
+  });
+}
+
+export async function startFactoryExecution(client: WorkflowClientLike, input: FactoryWorkflowInput): Promise<unknown> {
+  const baseUrl = dashboardBaseUrl();
+  return client.workflow.start("factoryWorkflow", {
+    workflowId: `factory-${input.runId}`,
+    taskQueue: TASK_QUEUES.control,
+    args: [{ ...input, protocolVersion: 3 }],
+    searchAttributes: {
+      FactoryRepository: [input.repository],
+      FactoryRunStatus: ["running"],
+      FactoryWorkflowKind: [input.workflow],
+      FactoryExecutionContract: ["factory-execution-view.v2"],
+      ...(input.riskTier ? { FactoryRiskTier: [input.riskTier] } : {}),
+    },
+    memo: {
+      title: input.title,
+      description: input.description,
+      dashboardUrl: `${baseUrl}/executions/factory-${input.runId}`,
     },
   });
 }

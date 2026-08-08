@@ -1,4 +1,3 @@
-import type { FactoryProjection } from "../db/factory-projection.js";
 import type { EvidenceStore } from "../evidence/evidence-store.js";
 import type { EvidenceRef } from "../contracts/evidence.js";
 import {
@@ -27,11 +26,15 @@ export interface FeedbackIngestResult {
 }
 
 export interface FeedbackIngestDependencies {
-  readonly projection: Pick<
-    FactoryProjection,
-    "recordFeedbackItem" | "recordIncidentLink" | "recordOracleCalibration" | "getFeedbackTraceability"
-  >;
+  readonly projection: FeedbackProjection;
   readonly evidenceStore: Pick<EvidenceStore, "appendEvidence">;
+}
+
+export interface FeedbackProjection {
+  recordFeedbackItem(input: { runId: string; feedbackId: string; source: string; summary: string }): Promise<{ inserted: boolean }>;
+  recordIncidentLink(input: { runId: string; incidentId: string; source: string }): Promise<{ inserted: boolean }>;
+  recordOracleCalibration(input: { runId: string; oracleId: string; calibrationId: string; score: number }): Promise<void>;
+  getFeedbackTraceability(feedbackId: string): Promise<import("./types.js").FeedbackTraceability | null>;
 }
 
 export interface FeedbackIngest {

@@ -58,7 +58,14 @@ export async function runNodeAttempt<T>(options: {
     return {
       result,
       budget: options.budget,
-      attemptRef: { node: options.node, attemptId, status: "succeeded" },
+      attemptRef: {
+        node: options.node,
+        attemptId,
+        status: "succeeded",
+        startedAt,
+        completedAt,
+        evidenceRefs: result.evidenceRefs,
+      },
     };
   } catch (error) {
     const failure = classifyFailure(error);
@@ -76,7 +83,15 @@ export async function runNodeAttempt<T>(options: {
     return {
       result,
       budget: options.budget,
-      attemptRef: { node: options.node, attemptId, status: "failed" },
+      attemptRef: {
+        node: options.node,
+        attemptId,
+        status: "failed",
+        startedAt,
+        completedAt,
+        failureCode: failure.code,
+        evidenceRefs: result.evidenceRefs,
+      },
     };
   }
 }

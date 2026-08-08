@@ -1,0 +1,4 @@
+id: SCN-TEMPORAL-EXECUTION-AUTHORITY
+title: Protocol-3 execution state is served without PostgreSQL projections
+acceptance:
+  - AC-TEMPORAL-EXECUTION-AUTHORITY

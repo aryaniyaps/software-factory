@@ -8,7 +8,7 @@ export interface FactoryEvidenceReader {
 
 const noopReader: FactoryEvidenceReader = {
   async getEvidence(ref) {
-    return { ref, note: "Evidence payload resolved from factory store when worker DB is available.", stub: true };
+    return { ref, note: "Evidence payload requires an object reference from the Temporal execution view.", stub: true };
   },
   async listEvidenceMeta(runId) {
     return { runId, items: [], stub: true };

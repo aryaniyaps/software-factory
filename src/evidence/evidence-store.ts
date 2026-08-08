@@ -1,5 +1,4 @@
 import type { EvidenceKind } from "../contracts/evidence.js";
-import type { FactoryProjection } from "../db/factory-projection.js";
 import type { ObjectStore } from "./object-store.js";
 import { sha256Hex } from "./object-store.js";
 import { buildEvidenceManifest, computeManifestHash, type EvidenceManifest } from "./manifest.js";
@@ -32,9 +31,20 @@ export interface EvidenceStore {
 }
 
 export interface EvidenceStoreDependencies {
-  projection: FactoryProjection;
+  projection: EvidenceProjection;
   objectStore: ObjectStore;
   maxInlineBytes: number;
+}
+
+export interface EvidenceProjection {
+  recordEventOutbox(input: { runId: string; eventId: string; type: string; payload: unknown }): Promise<{ inserted: boolean }>;
+  recordEvidenceItem(input: EvidenceItemInput & { runId: string; uri: string; sha256: string }): Promise<void>;
+  recordGateDecision(input: { runId: string; gateId: string; decision: string; policyVersion: string; reasons: unknown; evidenceRefs: readonly string[]; decidedAt?: string }): Promise<void>;
+  listEvidenceItemIds(runId: string): Promise<string[]>;
+  listGateDecisionKeys(runId: string): Promise<string[]>;
+  listScenarioRunKeys(runId: string): Promise<string[]>;
+  getRun(runId: string): Promise<{ taskId: string } | null>;
+  recordEvidenceManifest(input: { runId: string; manifest: EvidenceManifest; hash: string }): Promise<void>;
 }
 
 export function createEvidenceStore(deps: EvidenceStoreDependencies): EvidenceStore {

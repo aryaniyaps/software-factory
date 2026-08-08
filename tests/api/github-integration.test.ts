@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createApiApp } from "../../src/api/server.js";
 import type { GitHubAppService } from "../../src/integrations/github-app.js";
+import { fakeExecutions } from "./fake-executions.js";
 
 function githubService(overrides: Partial<GitHubAppService> = {}): GitHubAppService {
   return {
@@ -36,11 +37,7 @@ function githubService(overrides: Partial<GitHubAppService> = {}): GitHubAppServ
 describe("github integration routes", () => {
   it("returns github status and repository catalog", async () => {
     const app = createApiApp({
-      store: {
-        async createTask() { return "run-1"; },
-        async getRun() { return null; },
-        async cancelRun() {},
-      },
+      executions: fakeExecutions(),
       apiToken: "secret",
       github: githubService(),
       githubWebhookSecret: "whsec",
@@ -76,11 +73,7 @@ describe("github integration routes", () => {
   it("accepts signed installation webhooks without API auth", async () => {
     const events: string[] = [];
     const app = createApiApp({
-      store: {
-        async createTask() { return "run-1"; },
-        async getRun() { return null; },
-        async cancelRun() {},
-      },
+      executions: fakeExecutions(),
       apiToken: "secret",
       github: githubService({
         async handleWebhookEvent(event) {
@@ -127,11 +120,7 @@ describe("github integration routes", () => {
 
   it("rejects task creation without repository", async () => {
     const app = createApiApp({
-      store: {
-        async createTask() { return "run-1"; },
-        async getRun() { return null; },
-        async cancelRun() {},
-      },
+      executions: fakeExecutions(),
       apiToken: "secret",
       github: githubService(),
       githubWebhookSecret: "whsec",
@@ -144,7 +133,7 @@ describe("github integration routes", () => {
           reject(new Error("server did not bind"));
           return;
         }
-        fetch(`http://127.0.0.1:${address.port}/tasks`, {
+        fetch(`http://127.0.0.1:${address.port}/executions`, {
           method: "POST",
           headers: {
             "content-type": "application/json",

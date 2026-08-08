@@ -140,18 +140,20 @@ describe("factory runtime invariants", () => {
     });
   });
 
-  describe("projection idempotency", () => {
-    it("documents Drizzle onConflict semantics for projection writes", () => {
-      const source = readFileSync(join(repoRoot, "src/db/factory-projection.ts"), "utf8");
-      expect(source).toContain("onConflictDoUpdate");
-      expect(source).toContain("onConflictDoNothing");
-      expect(source).toContain("db.transaction");
+  describe("Temporal execution authority", () => {
+    it("keeps the renderable graph and execution query in Workflow code", () => {
+      const workflow = readFileSync(join(repoRoot, "src/temporal/workflows/factory-workflow.ts"), "utf8");
+      const contract = readFileSync(join(repoRoot, "src/contracts/execution.ts"), "utf8");
+      expect(workflow).toContain("factoryExecutionViewQuery");
+      expect(contract).toContain("FACTORY_EXECUTION_GRAPH_V2");
     });
 
-    it("points integration coverage at tests/db/factory-projection.test.ts", () => {
-      const source = readFileSync(join(repoRoot, "tests/db/factory-projection.test.ts"), "utf8");
-      expect(source).toContain("upserts runs, events, artifacts, and deployments idempotently");
-      expect(source).toContain("writes outbox events inside a transaction and deduplicates repeats");
+    it("keeps application Postgres outside the execution domain", () => {
+      const schema = readFileSync(join(repoRoot, "src/db/schema.ts"), "utf8");
+      expect(schema).toContain("a2a_tasks");
+      expect(schema).toContain("github_installations");
+      expect(schema).not.toContain("factory_runs");
+      expect(schema).not.toContain("tool_calls");
     });
   });
 
@@ -175,6 +177,7 @@ describe("factory runtime invariants", () => {
       const source = readFileSync(join(repoRoot, "src/temporal/workflows/factory-workflow.ts"), "utf8");
       expect(source).toContain("continuationGeneration: state.continuationGeneration + 1");
       expect(source).toContain("nodeAttempts: state.nodeAttempts");
+      expect(source).toContain("executionRecords: state.executionRecords");
       expect(source).toContain("budget: state.budget");
       expect(source).toContain("worktree,");
       expect(source).toContain("agentOutput,");

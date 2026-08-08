@@ -40,7 +40,7 @@ describe("Temporal factory client", () => {
     });
   });
 
-  it("starts v2 with search attributes and dashboard memo", async () => {
+  it("starts v2 with search attributes but no application dashboard link", async () => {
     let received: Record<string, unknown> | undefined;
     const client = mockClient(async (workflow, options) => {
       received = { workflow, ...options };
@@ -69,8 +69,8 @@ describe("Temporal factory client", () => {
       memo: {
         title: "Add feature X",
         description: "Acceptance criteria",
-        dashboardUrl: "http://dashboard.test/runs/run-123",
       },
     });
+    expect((received?.memo as Record<string, unknown>)).not.toHaveProperty("dashboardUrl");
   });
 });

@@ -2,7 +2,6 @@ import { compactError } from "../../agents/compact-error.js";
 import { buildContextPacket } from "../../agents/context-packet.js";
 import { promptForRole } from "../../agents/prompts.js";
 import type { AgentRunner } from "../../agents/runner.js";
-import type { AgentToolCallRecord } from "../../agents/runner.js";
 import { profileForRole } from "../../agents/role-profiles.js";
 import { toolsForRole } from "../../agents/tool-policy.js";
 import { correlationToAgentMetadata } from "../../integrations/correlation.js";
@@ -11,6 +10,10 @@ import { parseAgentOutput, type AgentOutput } from "../../contracts/nodes.js";
 import { parseNodeContext } from "../../contracts/conversation.js";
 import { Context } from "@temporalio/activity";
 import { startActivityHeartbeat } from "./activity-heartbeat.js";
+import type {
+  AgentExecutionRecords,
+  AgentTurnInput,
+} from "../../evidence/agent-execution-recorder.js";
 
 export interface AgentMemoryHooks {
   buildContext(input: { run: unknown; role: string; value: unknown; mentalModels: readonly string[]; operations: readonly ("recall" | "reflect" | "retain")[] }): Promise<string>;
@@ -18,20 +21,7 @@ export interface AgentMemoryHooks {
 }
 
 export interface AgentSessionHooks {
-  recordTurn(input: {
-    runId: string;
-    sessionId: string;
-    role: string;
-    nodeAttemptId: string;
-    turnId: string;
-    turnIndex: number;
-    prompt: string;
-    systemPrompt: string;
-    output: string;
-    startedAt: string;
-    completedAt: string;
-    toolCalls: readonly AgentToolCallRecord[];
-  }): Promise<void>;
+  recordTurn(input: AgentTurnInput): Promise<AgentExecutionRecords | undefined>;
 }
 
 function predecessorOutputs(value: unknown): AgentOutput[] | undefined {
@@ -142,9 +132,10 @@ export function createAgentActivities(dependencies: {
           },
         });
       const completedAt = new Date().toISOString();
+      let execution: AgentExecutionRecords | undefined;
       if (dependencies.sessions) {
         const nodeAttemptId = input.run.attemptId ?? `${input.role}:1`;
-        await dependencies.sessions.recordTurn({
+        execution = await dependencies.sessions.recordTurn({
           runId: input.run.runId,
           sessionId: result.sessionId,
           role: input.role,
@@ -167,7 +158,11 @@ export function createAgentActivities(dependencies: {
           operations: profile.hindsightOperations,
         });
       }
-      return { sessionId: result.sessionId, output: parseAgentOutput(result.text) };
+      return {
+        sessionId: result.sessionId,
+        output: parseAgentOutput(result.text),
+        ...(execution ? { execution } : {}),
+      };
       } finally {
         stopHeartbeat();
       }
